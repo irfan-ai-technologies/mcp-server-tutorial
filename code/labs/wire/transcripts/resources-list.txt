@@ -1,0 +1,31 @@
+POST /mcp HTTP/1.1
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "resources/list"
+}
+
+--- response ---
+
+{
+  "jsonrpc": "2.0",
+  "id": 5,
+  "result": {
+    "resources": [
+      {
+        "_meta": {
+          "fastmcp": {
+            "tags": []
+          }
+        },
+        "description": "Size and vocabulary of the catalogue: how many titles and licences exist, which territories and rights appear, and the periods royalties are reported for. Load this before reasoning about coverage.",
+        "mimeType": "application/json",
+        "name": "Catalogue overview",
+        "uri": "ledger://catalogue"
+      }
+    ]
+  }
+}

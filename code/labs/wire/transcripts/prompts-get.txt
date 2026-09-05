@@ -1,0 +1,36 @@
+POST /mcp HTTP/1.1
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "prompts/get",
+    "params": {
+        "name": "clearance_check",
+        "arguments": {
+            "title": "The Winter Cartograph",
+            "territory": "GB",
+            "rights": "svod"
+        }
+    }
+}
+
+--- response ---
+
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "result": {
+    "description": "Can we license this title, in this territory, on these rights?",
+    "messages": [
+      {
+        "content": {
+          "text": "Can we grant svod rights for \u201cThe Winter Cartograph\u201d in GB?\n\nWork in this order and show your reasoning:\n1. Find the title with search_titles. If several match, list them and stop \u2014 do not guess which one is meant.\n2. Look for an existing exclusive licence covering GB and svod. An exclusive that has not expired blocks the grant, whatever else is true.\n3. List the windows already committed in that territory, and say which periods are free.\n4. Name the agreement each blocking licence sits under, so the answer can be checked against the paper.\n\nIf the licence data is ambiguous, say so rather than resolving it.",
+          "type": "text"
+        },
+        "role": "user"
+      }
+    ]
+  }
+}

@@ -1,0 +1,163 @@
+POST /mcp HTTP/1.1
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/list"
+}
+
+--- response ---
+
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "tools": [
+      {
+        "_meta": {
+          "fastmcp": {
+            "tags": []
+          }
+        },
+        "description": "Find titles by name. Use this first \u2014 every other tool takes a title_id.",
+        "inputSchema": {
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "words from the title's name; matching is case-insensitive."
+            },
+            "limit": {
+              "default": 20,
+              "type": "integer",
+              "description": "maximum titles to return, 1-100."
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object",
+          "additionalProperties": false
+        },
+        "name": "search_titles",
+        "outputSchema": {
+          "properties": {
+            "result": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "result"
+          ],
+          "type": "object",
+          "x-fastmcp-wrap-result": true
+        },
+        "title": "Search Titles"
+      },
+      {
+        "_meta": {
+          "fastmcp": {
+            "tags": []
+          }
+        },
+        "description": "Everything known about one title, plus how many licences it carries.",
+        "inputSchema": {
+          "properties": {
+            "title_id": {
+              "type": "string",
+              "description": "a title identifier such as T-1042, from search_titles."
+            }
+          },
+          "required": [
+            "title_id"
+          ],
+          "type": "object",
+          "additionalProperties": false
+        },
+        "name": "get_title",
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "title": "Get Title"
+      },
+      {
+        "_meta": {
+          "fastmcp": {
+            "tags": []
+          }
+        },
+        "description": "Licences attached to a title.",
+        "inputSchema": {
+          "properties": {
+            "title_id": {
+              "type": "string",
+              "description": "a title identifier such as T-1042."
+            },
+            "territory": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "ISO 3166-1 alpha-2 code, e.g. GB. Omit for every territory."
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "active, expired or pending. Omit for all three."
+            }
+          },
+          "required": [
+            "title_id"
+          ],
+          "type": "object",
+          "additionalProperties": false
+        },
+        "name": "find_licences",
+        "outputSchema": {
+          "properties": {
+            "result": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "result"
+          ],
+          "type": "object",
+          "x-fastmcp-wrap-result": true
+        },
+        "title": "Find Licences"
+      },
+      {
+        "_meta": {
+          "fastmcp": {
+            "tags": []
+          }
+        },
+        "description": "One licence in full, with the chain of agreements it sits under.",
+        "inputSchema": {
+          "properties": {
+            "licence_id": {
+              "type": "string",
+              "description": "a licence identifier such as LIC-10420, from find_licences."

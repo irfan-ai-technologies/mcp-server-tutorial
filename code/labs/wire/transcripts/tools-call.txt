@@ -1,0 +1,43 @@
+POST /mcp HTTP/1.1
+Content-Type: application/json
+Accept: application/json, text/event-stream
+
+{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+        "name": "get_title",
+        "arguments": {
+            "title_id": "T-1152"
+        }
+    }
+}
+
+--- response ---
+
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "result": {
+    "content": [
+      {
+        "text": "{\"id\":\"T-1152\",\"name\":\"The Winter Cartograph: Third Season\",\"kind\":\"series\",\"release_year\":1999,\"original_language\":\"en\",\"runtime_minutes\":31,\"synopsis\":\"A series from 1999. Synopsis text is generated and carries no meaning.\",\"licences\":180,\"active\":63,\"territories\":33}",
+        "type": "text"
+      }
+    ],
+    "isError": false,
+    "structuredContent": {
+      "id": "T-1152",
+      "name": "The Winter Cartograph: Third Season",
+      "kind": "series",
+      "release_year": 1999,
+      "original_language": "en",
+      "runtime_minutes": 31,
+      "synopsis": "A series from 1999. Synopsis text is generated and carries no meaning.",
+      "licences": 180,
+      "active": 63,
+      "territories": 33
+    }
+  }
+}
