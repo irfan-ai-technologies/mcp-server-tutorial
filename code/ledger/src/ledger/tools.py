@@ -7,14 +7,18 @@ title — which is exactly what chapter 8 needs to measure.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastmcp.exceptions import ToolError
 
 from ledger import db
 from ledger.app import mcp
 
-
 # region: search_titles
-@mcp.tool
+READ_ONLY = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
+
+
+@mcp.tool(annotations=READ_ONLY)
 def search_titles(query: str, limit: int = 20) -> list[dict]:
     """Find titles by name. Use this first — every other tool takes a title_id.
 
@@ -39,7 +43,7 @@ def search_titles(query: str, limit: int = 20) -> list[dict]:
 # endregion: search_titles
 
 
-@mcp.tool
+@mcp.tool(annotations=READ_ONLY)
 def get_title(title_id: str) -> dict:
     """Everything known about one title, plus how many licences it carries.
 
@@ -63,11 +67,11 @@ def get_title(title_id: str) -> dict:
 
 
 # region: find_licences
-@mcp.tool
+@mcp.tool(annotations=READ_ONLY)
 def find_licences(
     title_id: str,
     territory: str | None = None,
-    status: str | None = None,
+    status: Literal["active", "expired", "pending"] | None = None,
 ) -> list[dict]:
     """Licences attached to a title.
 
@@ -76,11 +80,6 @@ def find_licences(
         territory: ISO 3166-1 alpha-2 code, e.g. GB. Omit for every territory.
         status: active, expired or pending. Omit for all three.
     """
-    if status is not None and status not in {"active", "expired", "pending"}:
-        raise ToolError(
-            f"status {status!r} is not one of: active, expired, pending"
-        )
-
     # No limit, and no total. A handful of titles carry 180 licences, and asking
     # about one of them returns every row. Chapter 8 prices that; chapter 10
     # fixes it. Leaving it naive here is the point.
@@ -103,7 +102,7 @@ def find_licences(
 # endregion: find_licences
 
 
-@mcp.tool
+@mcp.tool(annotations=READ_ONLY)
 def licence_detail(licence_id: str) -> dict:
     """One licence in full, with the chain of agreements it sits under.
 

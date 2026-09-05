@@ -84,12 +84,22 @@ async def test_find_licences_filters_by_territory(client):
     assert {r["territory"] for r in result.data} == {row["territory"]}
 
 
-async def test_find_licences_rejects_an_unknown_status(client):
+async def test_the_schema_rejects_an_unknown_status(client):
+    """Validation belongs in the schema, not the body. The model is told what
+    the allowed values are before it calls, and a wrong one never reaches us."""
     async with client:
-        with pytest.raises(ToolError, match="active, expired, pending"):
+        with pytest.raises(ToolError, match="'active', 'expired' or 'pending'"):
             await client.call_tool(
                 "find_licences", {"title_id": "T-1000", "status": "lapsed"}
             )
+
+
+async def test_read_only_tools_say_so(client):
+    """Annotations are how a client decides what it may run without asking."""
+    async with client:
+        for tool in await client.list_tools():
+            assert tool.annotations is not None, f"{tool.name} has no annotations"
+            assert tool.annotations.read_only_hint is True, f"{tool.name} claims to write"
 
 
 async def test_licence_detail_walks_up_to_a_master(client):
