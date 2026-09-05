@@ -26,31 +26,24 @@ for _ in $(seq 1 40); do
   sleep 0.5
 done
 
-# name, request body
+# Two files per capture: the request as sent, the response as received. Keeping
+# them apart means a chapter can include either one with real JSON highlighting,
+# and a diff after re-running points at exactly what changed.
 capture() {
   local name="$1" body="$2"
-  {
-    echo "POST /mcp HTTP/1.1"
-    echo "Content-Type: application/json"
-    echo "Accept: application/json, text/event-stream"
-    echo
-    echo "$body" | python3 -m json.tool
-    echo
-    echo "--- response ---"
-    echo
-    curl -sS -L --max-time 20 -X POST "$URL" \
-      -H 'Content-Type: application/json' \
-      -H 'Accept: application/json, text/event-stream' \
-      -d "$body" \
-      | sed 's/^data: //' \
-      | python3 -c 'import sys,json
+  echo "$body" | python3 -m json.tool > "$OUT/$name.request.json"
+  curl -sS -L --max-time 20 -X POST "$URL" \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' \
+    -d "$body" \
+    | sed 's/^data: //' \
+    | python3 -c 'import sys, json
 raw = "".join(l for l in sys.stdin if l.strip() and not l.startswith("event:"))
 try:
-    print(json.dumps(json.loads(raw), indent=2)[:4000])
+    print(json.dumps(json.loads(raw), indent=2))
 except Exception:
-    print(raw[:4000])'
-  } > "$OUT/$name.txt"
-  echo "  wrote transcripts/$name.txt"
+    print(raw)' > "$OUT/$name.response.json"
+  echo "  $name.request.json / $name.response.json"
 }
 
 capture discover \
@@ -58,6 +51,19 @@ capture discover \
 
 capture tools-list \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+
+# tools/list is 169 lines and no chapter can print that. Project one tool out of
+# the captured response rather than retyping an abridged version by hand: the
+# excerpt stays real, and it changes when the server does.
+python3 -c '
+import json, pathlib, sys
+out = pathlib.Path(sys.argv[1])
+d = json.loads((out / "tools-list.response.json").read_text())
+tools = d["result"]["tools"]
+one = next(t for t in tools if t["name"] == "find_licences")
+(out / "tools-list.one-tool.json").write_text(json.dumps(one, indent=2) + "\n")
+print(f"  tools-list.one-tool.json (1 of {len(tools)})")
+' "$OUT"
 
 capture tools-call \
   '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_title","arguments":{"title_id":"T-1152"}}}'

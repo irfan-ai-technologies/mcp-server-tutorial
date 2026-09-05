@@ -1,0 +1,13 @@
+{
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "prompts/get",
+    "params": {
+        "name": "clearance_check",
+        "arguments": {
+            "title": "The Winter Cartograph",
+            "territory": "GB",
+            "rights": "svod"
+        }
+    }
+}

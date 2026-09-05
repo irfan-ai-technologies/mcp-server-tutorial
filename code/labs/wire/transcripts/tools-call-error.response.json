@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "result": {
+    "content": [
+      {
+        "text": "no title 'T-nope'; use search_titles to find one",
+        "type": "text"
+      }
+    ],
+    "isError": true
+  }
+}

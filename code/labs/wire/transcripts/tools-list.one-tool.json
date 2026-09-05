@@ -1,0 +1,63 @@
+{
+  "_meta": {
+    "fastmcp": {
+      "tags": []
+    }
+  },
+  "description": "Licences attached to a title.",
+  "inputSchema": {
+    "properties": {
+      "title_id": {
+        "type": "string",
+        "description": "a title identifier such as T-1042."
+      },
+      "territory": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "ISO 3166-1 alpha-2 code, e.g. GB. Omit for every territory."
+      },
+      "status": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "active, expired or pending. Omit for all three."
+      }
+    },
+    "required": [
+      "title_id"
+    ],
+    "type": "object",
+    "additionalProperties": false
+  },
+  "name": "find_licences",
+  "outputSchema": {
+    "properties": {
+      "result": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "result"
+    ],
+    "type": "object",
+    "x-fastmcp-wrap-result": true
+  },
+  "title": "Find Licences"
+}
