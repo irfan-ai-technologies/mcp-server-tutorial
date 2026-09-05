@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- BEGIN:title --><title>5. Resources and templates &mdash; MCP Servers: Zero to Hero</title><!-- END:title -->
+<link rel="stylesheet" href="../assets/book.css">
+<script src="../assets/book.js" defer></script>
+</head>
+<body>
+<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme">◐</button>
+<div class="shell">
+<nav class="sidebar" aria-label="Contents">
+<!-- BEGIN:sidebar -->
+<a class="brand" href="../index.html">MCP Servers: Zero to Hero</a>
+<p class="part">Part 0 — Orientation</p>
+<ol>
+<li><a href="ch01-what-mcp-actually-is.html"><span class="num">1</span>What MCP actually is</a></li>
+<li><a href="ch02-the-protocol-in-one-chapter.html"><span class="num">2</span>The protocol in one chapter</a></li>
+</ol>
+<p class="part">Part 1 — Zero: a server that works</p>
+<ol>
+<li><a href="ch03-first-server.html"><span class="num">3</span>First server</a></li>
+<li><a href="ch04-tools.html"><span class="num">4</span>Tools</a></li>
+<li><a href="ch05-resources.html" aria-current="page"><span class="num">5</span>Resources and templates</a></li>
+<li><a aria-disabled="true"><span class="num">6</span>Prompts</a></li>
+<li><a aria-disabled="true"><span class="num">7</span>Testing without an LLM</a></li>
+</ol>
+<p class="part">Part 2 — The client&#x27;s point of view</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">8</span>What the model actually sees</a></li>
+<li><a aria-disabled="true"><span class="num">9</span>Tool design is prompt engineering</a></li>
+<li><a aria-disabled="true"><span class="num">10</span>Result shaping</a></li>
+</ol>
+<p class="part">Part 3 — Scale</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">11</span>Going HTTP</a></li>
+<li><a aria-disabled="true"><span class="num">12</span>Life after sessions</a></li>
+<li><a aria-disabled="true"><span class="num">13</span>Failure</a></li>
+<li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
+<li><a aria-disabled="true"><span class="num">15</span>Long-running work</a></li>
+<li><a aria-disabled="true"><span class="num">16</span>Observability</a></li>
+<li><a aria-disabled="true"><span class="num">17</span>Identity and multi-tenancy</a></li>
+<li><a aria-disabled="true"><span class="num">18</span>Security</a></li>
+</ol>
+<p class="part">Part 4 — The context problem</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">19</span>Progressive disclosure I: shrink the surface</a></li>
+<li><a aria-disabled="true"><span class="num">20</span>Progressive disclosure II: search then load</a></li>
+<li><a aria-disabled="true"><span class="num">21</span>Progressive disclosure III: resources as the channel</a></li>
+<li><a aria-disabled="true"><span class="num">22</span>jq as a tool</a></li>
+<li><a aria-disabled="true"><span class="num">23</span>Code mode</a></li>
+</ol>
+<p class="part">Part 5 — Shipping</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">24</span>Packaging and distribution</a></li>
+<li><a aria-disabled="true"><span class="num">25</span>Evaluating a server</a></li>
+<li><a aria-disabled="true"><span class="num">26</span>Anti-patterns and a review checklist</a></li>
+</ol>
+<p class="part">Appendices</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">A</span>The same server without FastMCP</a></li>
+<li><a aria-disabled="true"><span class="num">B</span>Migrating 2025-11-25 to 2026-07-28</a></li>
+<li><a aria-disabled="true"><span class="num">C</span>jq cookbook for agent tool results</a></li>
+<li><a aria-disabled="true"><span class="num">D</span>Glossary</a></li>
+</ol>
+<!-- END:sidebar -->
+</nav>
+<main class="content">
+<header class="chapter-head">
+<!-- BEGIN:head -->
+<p class="eyebrow">Part 1 — Zero: a server that works &middot; Chapter 5</p>
+<h1>Resources and templates</h1>
+<p class="standfirst">When a resource beats a tool, and why most servers get this backwards.</p>
+<div class="chapter-meta"><span><b>Status</b> <span class="status status-draft">draft</span></span><span><b>Protocol</b> <code>2026-07-28</code></span><span><b>Code</b> <code>git checkout ch05-resources</code></span></div>
+<!-- END:head -->
+</header>
+<!-- BEGIN:body -->
+<p>Most MCP servers have no resources. Their authors read the specification, noticed that
+resources are reads and tools can also read, and concluded that resources were a redundant
+primitive. That conclusion is wrong, and the cost of it shows up in Part 4 as a context
+problem that did not need to exist.</p>
+
+<h2 id="the-distinction-is-who-decides">The distinction is who decides<a class="anchor" href="#the-distinction-is-who-decides" aria-label="Link to this section">#</a></h2>
+
+<p>A tool is <em>model-invoked</em>: the model reads descriptions and chooses to call it. A
+resource is <em>application-invoked</em>: the client decides to load it and addresses it by
+URI.</p>
+
+<p>So the question is never "is this a read?". It is: <strong>does the client already know
+it wants this?</strong></p>
+
+<div class="table-scroll">
+<table>
+<thead><tr><th>Situation</th><th>Primitive</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>User has a title open in the UI</td><td>Resource</td><td>The client knows which one; no reason to make the model ask</td></tr>
+<tr><td>"Which titles are about lighthouses?"</td><td>Tool</td><td>Only the model can choose the arguments</td></tr>
+<tr><td>The catalogue's vocabulary and size</td><td>Resource</td><td>Useful before any question is asked</td></tr>
+<tr><td>"What did we license to Northwind in Q3?"</td><td>Tool</td><td>The parameters come from the conversation</td></tr>
+<tr><td>One node of a document hierarchy</td><td>Resource</td><td>Addressable, so it can be walked</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Notice that the same underlying data can legitimately appear in both. That is not
+duplication, it is two access paths for two different deciders.</p>
+
+<h2 id="an-overview-worth-loading-first">An overview worth loading first<a class="anchor" href="#an-overview-worth-loading-first" aria-label="Link to this section">#</a></h2>
+
+<!-- include: code/ledger/src/ledger/resources.py lang=python region=catalogue_overview -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/resources.py</span><span>region catalogue_overview</span></figcaption>
+<pre class="highlight"><code><span class="nd">@mcp</span><span class="o">.</span><span class="n">resource</span><span class="p">(</span>
+    <span class="s2">&quot;ledger://catalogue&quot;</span><span class="p">,</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Catalogue overview&quot;</span><span class="p">,</span>
+    <span class="n">description</span><span class="o">=</span><span class="p">(</span>
+        <span class="s2">&quot;Size and vocabulary of the catalogue: how many titles and licences &quot;</span>
+        <span class="s2">&quot;exist, which territories and rights appear, and the periods royalties &quot;</span>
+        <span class="s2">&quot;are reported for. Load this before reasoning about coverage.&quot;</span>
+    <span class="p">),</span>
+    <span class="n">mime_type</span><span class="o">=</span><span class="s2">&quot;application/json&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">catalogue_overview</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Cheap, stable, and worth having in context before anything else.</span>
+
+<span class="sd">    Note what it does not contain: any actual title. An overview that grows with</span>
+<span class="sd">    the catalogue is not an overview, it is a dump with a friendly name.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">counts</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">one</span><span class="p">(</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        SELECT (SELECT COUNT(*) FROM titles)        AS titles,</span>
+<span class="sd">               (SELECT COUNT(*) FROM licensees)     AS licensees,</span>
+<span class="sd">               (SELECT COUNT(*) FROM licences)      AS licences,</span>
+<span class="sd">               (SELECT COUNT(*) FROM agreements)    AS agreements,</span>
+<span class="sd">               (SELECT COUNT(*) FROM royalty_lines) AS royalty_lines</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+    <span class="p">)</span>
+    <span class="n">vocabulary</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;territories&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;territory&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT DISTINCT territory FROM licences ORDER BY territory&quot;</span><span class="p">)],</span>
+        <span class="s2">&quot;rights&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;rights&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT DISTINCT rights FROM licences ORDER BY rights&quot;</span><span class="p">)],</span>
+        <span class="s2">&quot;statuses&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;active&quot;</span><span class="p">,</span> <span class="s2">&quot;expired&quot;</span><span class="p">,</span> <span class="s2">&quot;pending&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;periods&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;period&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT DISTINCT period FROM royalty_lines ORDER BY period&quot;</span><span class="p">)],</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;counts&quot;</span><span class="p">:</span> <span class="n">counts</span><span class="p">,</span> <span class="s2">&quot;vocabulary&quot;</span><span class="p">:</span> <span class="n">vocabulary</span><span class="p">},</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>This is the most under-used shape in MCP: a small, stable document that teaches the
+shape of the data before anyone asks a question. It tells a model that territories are
+two-letter codes and which ones exist, that <code>rights</code> is a closed vocabulary and
+what is in it, that royalties are reported by quarter and which quarters exist.</p>
+
+<p>Without it, a model asked about "streaming rights in Britain" has to discover by trial
+that the values are <code>svod</code> and <code>GB</code>. With it, the first call is
+right.</p>
+
+<p>Now notice what the overview does <em>not</em> contain: any actual title. There are 1,200
+of them. An overview that grows with the catalogue is not an overview, it is a dump with a
+friendly name, and a test in this repository enforces the difference:</p>
+
+<pre class="highlight"><code>assert "titles" not in payload["vocabulary"]
+assert len(json.dumps(payload)) &lt; 4_000</code></pre>
+
+<p>Pick a size budget for anything a client might auto-load, write it as an assertion, and
+let it fail when someone adds a helpful list of everything.</p>
+
+<h2 id="templates-one-resource-many-addresses">Templates: one resource, many addresses<a class="anchor" href="#templates-one-resource-many-addresses" aria-label="Link to this section">#</a></h2>
+
+<!-- include: code/ledger/src/ledger/resources.py lang=python region=title_resource -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/resources.py</span><span>region title_resource</span></figcaption>
+<pre class="highlight"><code><span class="nd">@mcp</span><span class="o">.</span><span class="n">resource</span><span class="p">(</span>
+    <span class="s2">&quot;ledger://title/</span><span class="si">{title_id}</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Title&quot;</span><span class="p">,</span>
+    <span class="n">description</span><span class="o">=</span><span class="s2">&quot;One title by identifier, with its licence counts.&quot;</span><span class="p">,</span>
+    <span class="n">mime_type</span><span class="o">=</span><span class="s2">&quot;application/json&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">title_resource</span><span class="p">(</span><span class="n">title_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The same data get_title returns, addressable rather than callable.</span>
+
+<span class="sd">    Both existing is not duplication. The tool is for a model that has to decide</span>
+<span class="sd">    to look; the resource is for a client that already knows which title the</span>
+<span class="sd">    user is working on and can put it in context without a round trip.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">title</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">one</span><span class="p">(</span><span class="s2">&quot;SELECT * FROM titles WHERE id = :id&quot;</span><span class="p">,</span> <span class="nb">id</span><span class="o">=</span><span class="n">title_id</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">title</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;no title </span><span class="si">{</span><span class="n">title_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">})</span>
+    <span class="n">counts</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">one</span><span class="p">(</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        SELECT COUNT(*) AS licences, COUNT(DISTINCT territory) AS territories</span>
+<span class="sd">        FROM licences WHERE title_id = :id</span>
+<span class="sd">        &quot;&quot;&quot;</span><span class="p">,</span>
+        <span class="nb">id</span><span class="o">=</span><span class="n">title_id</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">title</span> <span class="o">|</span> <span class="n">counts</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p><code>ledger://title/{title_id}</code> is a resource template. It appears in
+<code>resources/templates/list</code> as a pattern rather than a concrete URI, and a client
+substitutes the identifier.</p>
+
+<p>The obvious objection: <code>get_title</code> already exists and returns nearly the same
+data. Why both?</p>
+
+<p>Because the deciders differ. A UI where the user has clicked on a title can attach
+<code>ledger://title/T-1152</code> to the conversation before the model does anything. The
+tool is for the case where the model has to work out which title is meant. Removing the
+resource does not save you anything — the data still gets loaded — it just forces a
+round trip and a decision through the model.</p>
+
+<p>Design your URI scheme as if people will bookmark it, because effectively they will.
+<code>ledger://title/{id}</code> and <code>ledger://agreement/{id}</code> are stable
+addresses for stable entities. Avoid encoding queries into URIs: the moment a URI has a
+filter in it, you have built a tool with an awkward calling convention.</p>
+
+<h2 id="links-not-subtrees">Links, not subtrees<a class="anchor" href="#links-not-subtrees" aria-label="Link to this section">#</a></h2>
+
+<p>The agreement resource is where this chapter starts pointing at Part 4. Agreements nest:
+amendments hang off masters, side letters off amendments, and the terms that apply are the
+ones nearest the leaf. There are 470 of them, some chains three deep.</p>
+
+<p>The tempting implementation returns the whole subtree from the root. It is less code and
+it works beautifully in a test with four agreements. At real depth it returns a document
+nobody can read and everybody pays for.</p>
+
+<p>What <code>ledger://agreement/{id}</code> returns instead is one node, its parent as a
+URI, and its children as URIs with just enough metadata — kind, reference, signing date —
+to choose between them. A reader walks. Each step is small, each step is a decision, and
+nothing is loaded that was not chosen.</p>
+
+<p>A test pins the shape:</p>
+
+<pre class="highlight"><code>for child in payload["children"]:
+    assert child["uri"].startswith("ledger://agreement/")
+    assert "children" not in child, "a child must be a link, not a subtree"</code></pre>
+
+<p>This is progressive disclosure in its simplest form, and it is available to you in
+chapter 5 rather than chapter 21 because it needs nothing but a URI scheme and some
+restraint. Chapter 21 generalises it: table-of-contents resources, drill-down over a corpus,
+and how to shape a hierarchy that was not designed to be walked.</p>
+
+<h2 id="mime-types-and-what-the-client-does-with-them">Mime types and what the client does with them<a class="anchor" href="#mime-types-and-what-the-client-does-with-them" aria-label="Link to this section">#</a></h2>
+
+<p>Declare <code>mime_type</code> honestly. A client that knows it has JSON can parse and
+render it; one that is told <code>text/plain</code> will show a wall of braces. If a
+resource returns Markdown, say so — some clients render it, and a rendered document is far
+more usable to a human sitting next to the model.</p>
+
+<p>Resources can also return binary content as blobs. Images and PDFs work; they also cost
+far more context than people expect, and chapter 8 will make you aware of it.</p>
+
+<h2 id="change-notification-as-it-now-works">Change notification, as it now works<a class="anchor" href="#change-notification-as-it-now-works" aria-label="Link to this section">#</a></h2>
+
+<div class="callout spec">
+<span class="label">Specification 2026-07-28</span>
+<p><code>resources/subscribe</code> and <code>resources/unsubscribe</code> are gone, along
+with the HTTP GET endpoint. In their place is <code>subscriptions/listen</code>: a single
+long-lived POST-response stream that a client opts into by notification type
+(<code>toolsListChanged</code>, <code>promptsListChanged</code>,
+<code>resourcesListChanged</code>, <code>resourceSubscriptions</code>). The server
+acknowledges and tags each notification with
+<code>io.modelcontextprotocol/subscriptionId</code>.</p>
+</div>
+
+<p>List results also now carry <code>ttlMs</code> and <code>cacheScope</code>, which let a
+client cache instead of polling. Between the two, most servers should be quieter than they
+were. <code>ledger</code>'s catalogue does not change during a conversation, so it uses
+neither — and, as chapter 2 established, FastMCP 4.0.3 does not emit the cache fields yet
+regardless. Chapter 14 is where caching becomes something you decide rather than something
+your library does or does not do.</p>
+
+<h2 id="checkpoint">Checkpoint<a class="anchor" href="#checkpoint" aria-label="Link to this section">#</a></h2>
+
+<p>Resources are for what the application knows it wants, tools are for what the model has
+to choose. An overview resource that teaches vocabulary is cheap and unusually valuable. And
+a hierarchy exposed as linked nodes rather than nested documents is the whole of progressive
+disclosure, sixteen chapters early.</p>
+<!-- END:body -->
+<!-- BEGIN:pager -->
+<nav class="pager" aria-label="Chapter">
+<a class="prev" href="ch04-tools.html"><span class="dir">Previous</span><span class="name">4. Tools</span></a>
+<span class="spacer"></span>
+</nav>
+<!-- END:pager -->
+</main>
+</div>
+</body>
+</html>
