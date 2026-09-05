@@ -8,6 +8,37 @@ Format: date, what changed, which chapters it touches, and whether they have bee
 
 ---
 
+## 2026-09-05 — FastMCP 4.0.3 still defaults its HTTP app to sessions
+
+**What.** `FastMCP.http_app()` takes `stateless_http: bool = False`. Left at the default,
+the Streamable HTTP app expects the pre-`2026-07-28` session handshake and answers a plain
+request with:
+
+```json
+{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Bad Request: Missing session ID"}}
+```
+
+This is the per-connection negotiation FastMCP 4 shipped so that older clients keep working
+against upgraded servers. It is a compatibility default, not a statement about the
+protocol — but it means a server that does nothing special is not speaking the current
+specification.
+
+**The trap.** Passing the flag through `mcp.run(transport="http", ...)` does not reach the
+app in 4.0.3 — neither `stateless_http=True` nor `stateless=True`. Both are accepted by the
+signature and both leave the server demanding a session ID. Only
+`mcp.http_app(stateless_http=True)` takes effect. Verified by request, not by reading the
+signature.
+
+**What we do.** `ledger.__main__.http_app()` builds the ASGI app explicitly and serves it
+with uvicorn. `--sessions` opts back into the legacy app for anyone testing an older client.
+
+**Chapters.** 3 (running it), 11 (going HTTP — this belongs in the text, not a footnote),
+12 (why the protocol dropped sessions in the first place).
+
+**Re-check when.** FastMCP changes the default, or forwards the flag through `run()`.
+
+---
+
 ## 2026-09-05 — baseline
 
 The book targets revision `2026-07-28`, published as the current specification. No drift
