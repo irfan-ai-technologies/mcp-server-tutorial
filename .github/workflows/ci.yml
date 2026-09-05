@@ -1,0 +1,79 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  book:
+    name: book builds and is up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Rebuilds every chapter, resolves every include target and internal
+      # link, then fails if the tree moved — a chapter whose generated
+      # regions were not committed never reaches main.
+      - name: build --check
+        run: uv run scripts/build.py check
+
+  code:
+    name: code samples run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: discover projects
+        id: find
+        run: |
+          projects=$(find code -name pyproject.toml -maxdepth 3 -exec dirname {} \; | sort)
+          echo "found:"; echo "${projects:-  (none yet)}"
+          {
+            echo "projects<<EOF"
+            echo "$projects"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: lint and test
+        if: steps.find.outputs.projects != ''
+        run: |
+          set -euo pipefail
+          while read -r project; do
+            [ -n "$project" ] || continue
+            echo "::group::$project"
+            uv sync --project "$project" --all-extras
+            uv run --project "$project" ruff check "$project"
+            uv run --project "$project" pytest "$project" -q
+            echo "::endgroup::"
+          done <<< "${{ steps.find.outputs.projects }}"
+
+  hygiene:
+    name: no secrets, no stray artefacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: no build output committed
+        run: |
+          if git ls-files --error-unmatch book/_site >/dev/null 2>&1; then
+            echo "book/_site is generated and must not be committed"; exit 1
+          fi
