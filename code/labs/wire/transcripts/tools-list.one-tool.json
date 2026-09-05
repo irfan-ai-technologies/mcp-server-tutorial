@@ -4,6 +4,11 @@
       "tags": []
     }
   },
+  "annotations": {
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "readOnlyHint": true
+  },
   "description": "Licences attached to a title.",
   "inputSchema": {
     "properties": {
@@ -26,6 +31,11 @@
       "status": {
         "anyOf": [
           {
+            "enum": [
+              "active",
+              "expired",
+              "pending"
+            ],
             "type": "string"
           },
           {

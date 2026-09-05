@@ -9,6 +9,11 @@
             "tags": []
           }
         },
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "readOnlyHint": true
+        },
         "description": "Find titles by name. Use this first \u2014 every other tool takes a title_id.",
         "inputSchema": {
           "properties": {
@@ -53,6 +58,11 @@
             "tags": []
           }
         },
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "readOnlyHint": true
+        },
         "description": "Everything known about one title, plus how many licences it carries.",
         "inputSchema": {
           "properties": {
@@ -80,6 +90,11 @@
             "tags": []
           }
         },
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "readOnlyHint": true
+        },
         "description": "Licences attached to a title.",
         "inputSchema": {
           "properties": {
@@ -102,6 +117,11 @@
             "status": {
               "anyOf": [
                 {
+                  "enum": [
+                    "active",
+                    "expired",
+                    "pending"
+                  ],
                   "type": "string"
                 },
                 {
@@ -142,6 +162,11 @@
           "fastmcp": {
             "tags": []
           }
+        },
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "readOnlyHint": true
         },
         "description": "One licence in full, with the chain of agreements it sits under.",
         "inputSchema": {
