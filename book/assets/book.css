@@ -185,7 +185,8 @@ a:hover { text-decoration-thickness: 2px; }
 .sidebar li { margin: 0 0 0.15rem; }
 
 .sidebar li a {
-  display: block;
+  display: flex;
+  gap: 0.55rem;
   padding: 0.2rem 1rem 0.2rem 0;
   color: var(--ink-soft);
   text-decoration: none;
@@ -201,8 +202,8 @@ a:hover { text-decoration-thickness: 2px; }
 }
 
 .sidebar .num {
-  display: inline-block;
-  min-width: 1.6em;
+  flex: 0 0 1.4em;
+  text-align: right;
   color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
 }
@@ -226,7 +227,7 @@ a:hover { text-decoration-thickness: 2px; }
 
 /* --- chapter header ----------------------------------------------------- */
 
-.chapter-head { margin-bottom: 3rem; }
+.chapter-head { margin-bottom: 2.25rem; }
 
 .chapter-head .eyebrow {
   font: 600 11px/1 var(--font-ui);
@@ -284,8 +285,7 @@ a:hover { text-decoration-thickness: 2px; }
   line-height: 1.3;
   letter-spacing: -0.012em;
   font-weight: 600;
-  margin: 3rem 0 1rem;
-  padding-top: 0.5rem;
+  margin: 2.6rem 0 0.9rem;
 }
 
 .content h3 {
