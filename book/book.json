@@ -21,7 +21,7 @@
           "slug": "ch02-the-protocol-in-one-chapter",
           "title": "The protocol in one chapter",
           "standfirst": "The 2026-07-28 wire format read directly: stateless core, server/discover, _meta conventions, resultType, MRTR, Streamable HTTP.",
-          "status": "planned"
+          "status": "draft"
         }
       ]
     },

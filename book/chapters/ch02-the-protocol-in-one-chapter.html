@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- BEGIN:title --><title>2. The protocol in one chapter &mdash; MCP Servers: Zero to Hero</title><!-- END:title -->
+<link rel="stylesheet" href="../assets/book.css">
+<script src="../assets/book.js" defer></script>
+</head>
+<body>
+<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme">◐</button>
+<div class="shell">
+<nav class="sidebar" aria-label="Contents">
+<!-- BEGIN:sidebar -->
+<a class="brand" href="../index.html">MCP Servers: Zero to Hero</a>
+<p class="part">Part 0 — Orientation</p>
+<ol>
+<li><a href="ch01-what-mcp-actually-is.html"><span class="num">1</span>What MCP actually is</a></li>
+<li><a href="ch02-the-protocol-in-one-chapter.html" aria-current="page"><span class="num">2</span>The protocol in one chapter</a></li>
+</ol>
+<p class="part">Part 1 — Zero: a server that works</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">3</span>First server</a></li>
+<li><a aria-disabled="true"><span class="num">4</span>Tools</a></li>
+<li><a aria-disabled="true"><span class="num">5</span>Resources and templates</a></li>
+<li><a aria-disabled="true"><span class="num">6</span>Prompts</a></li>
+<li><a aria-disabled="true"><span class="num">7</span>Testing without an LLM</a></li>
+</ol>
+<p class="part">Part 2 — The client&#x27;s point of view</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">8</span>What the model actually sees</a></li>
+<li><a aria-disabled="true"><span class="num">9</span>Tool design is prompt engineering</a></li>
+<li><a aria-disabled="true"><span class="num">10</span>Result shaping</a></li>
+</ol>
+<p class="part">Part 3 — Scale</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">11</span>Going HTTP</a></li>
+<li><a aria-disabled="true"><span class="num">12</span>Life after sessions</a></li>
+<li><a aria-disabled="true"><span class="num">13</span>Failure</a></li>
+<li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
+<li><a aria-disabled="true"><span class="num">15</span>Long-running work</a></li>
+<li><a aria-disabled="true"><span class="num">16</span>Observability</a></li>
+<li><a aria-disabled="true"><span class="num">17</span>Identity and multi-tenancy</a></li>
+<li><a aria-disabled="true"><span class="num">18</span>Security</a></li>
+</ol>
+<p class="part">Part 4 — The context problem</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">19</span>Progressive disclosure I: shrink the surface</a></li>
+<li><a aria-disabled="true"><span class="num">20</span>Progressive disclosure II: search then load</a></li>
+<li><a aria-disabled="true"><span class="num">21</span>Progressive disclosure III: resources as the channel</a></li>
+<li><a aria-disabled="true"><span class="num">22</span>jq as a tool</a></li>
+<li><a aria-disabled="true"><span class="num">23</span>Code mode</a></li>
+</ol>
+<p class="part">Part 5 — Shipping</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">24</span>Packaging and distribution</a></li>
+<li><a aria-disabled="true"><span class="num">25</span>Evaluating a server</a></li>
+<li><a aria-disabled="true"><span class="num">26</span>Anti-patterns and a review checklist</a></li>
+</ol>
+<p class="part">Appendices</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">A</span>The same server without FastMCP</a></li>
+<li><a aria-disabled="true"><span class="num">B</span>Migrating 2025-11-25 to 2026-07-28</a></li>
+<li><a aria-disabled="true"><span class="num">C</span>jq cookbook for agent tool results</a></li>
+<li><a aria-disabled="true"><span class="num">D</span>Glossary</a></li>
+</ol>
+<!-- END:sidebar -->
+</nav>
+<main class="content">
+<header class="chapter-head">
+<!-- BEGIN:head -->
+<p class="eyebrow">Part 0 — Orientation &middot; Chapter 2</p>
+<h1>The protocol in one chapter</h1>
+<p class="standfirst">The 2026-07-28 wire format read directly: stateless core, server/discover, _meta conventions, resultType, MRTR, Streamable HTTP.</p>
+<div class="chapter-meta"><span><b>Status</b> <span class="status status-draft">draft</span></span><span><b>Protocol</b> <code>2026-07-28</code></span></div>
+<!-- END:head -->
+</header>
+<!-- BEGIN:body -->
+<p>You can read the entire MCP specification in an afternoon, and you should eventually.
+This chapter is the shorter route: every message that matters, shown as it actually
+travelled, with a server on the other end that you can run yourself.</p>
+
+<p>Everything below was captured by <code>code/labs/wire/capture.sh</code>, which starts
+<code>ledger</code> and sends plain <code>curl</code> requests. The transcripts are
+committed to the repository. That is deliberate — when a library or the specification
+moves, re-running the script produces a diff, and the diff is what tells you the chapter
+needs revising.</p>
+
+<div class="callout warn">
+<span class="label">Why curl and not a client library</span>
+<p>A client library would hide the exact thing this chapter is about. There is no session
+here, no handshake, and no state carried between any two of these requests. That is easy
+to assert and hard to believe until you have watched it work.</p>
+</div>
+
+<h2 id="the-shape-of-every-message">The shape of every message<a class="anchor" href="#the-shape-of-every-message" aria-label="Link to this section">#</a></h2>
+
+<p>MCP is JSON-RPC 2.0. A request has <code>jsonrpc</code>, an <code>id</code>, a
+<code>method</code>, and usually <code>params</code>. A response echoes the
+<code>id</code> and carries either <code>result</code> or <code>error</code>. If you have
+implemented JSON-RPC before, you already know the frame; what is specific to MCP is the
+method vocabulary and the <code>_meta</code> conventions.</p>
+
+<p>Here is a call, exactly as sent:</p>
+
+<!-- include: code/labs/wire/transcripts/tools-call.request.json title=tools/call_—_request -->
+<figure class="snippet">
+<figcaption><span class="path">tools/call — request</span><span></span></figcaption>
+<pre class="highlight"><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;jsonrpc&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2.0&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;tools/call&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;params&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;get_title&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;arguments&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;title_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;T-1152&quot;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Three things are absent and all three used to be mandatory. There is no
+<code>Mcp-Session-Id</code> header. There was no <code>initialize</code> call before this
+one. There is nothing tying this request to any earlier request — it is the first thing
+this client has ever said to this server, and it works.</p>
+
+<div class="callout spec">
+<span class="label">Specification 2026-07-28</span>
+<p>Sessions and the <code>initialize</code>/<code>notifications/initialized</code>
+handshake were removed. Every request carries its own protocol version and client
+capabilities in <code>_meta</code> — <code>io.modelcontextprotocol/protocolVersion</code>
+and <code>io.modelcontextprotocol/clientCapabilities</code> — and clients
+<strong>SHOULD</strong> identify themselves per request with
+<code>io.modelcontextprotocol/clientInfo</code>. A version the server cannot speak comes
+back as <code>UnsupportedProtocolVersionError</code>.</p>
+</div>
+
+<p>This is the single most consequential change in the revision, and chapters 11 and 12
+are about living with it. For now, notice only what it buys: any instance can answer any
+request, so the server behind that URL can be four processes behind a load balancer that
+have never heard of each other.</p>
+
+<h2 id="a-tool-as-the-model-sees-it">A tool, as the model sees it<a class="anchor" href="#a-tool-as-the-model-sees-it" aria-label="Link to this section">#</a></h2>
+
+<p><code>tools/list</code> is how a client learns what a server can do. The response for
+<code>ledger</code> is 169 lines for four tools, so here is one of them, projected out of
+the captured response by the capture script rather than retyped:</p>
+
+<!-- include: code/labs/wire/transcripts/tools-list.one-tool.json title=one_entry_from_tools/list -->
+<figure class="snippet">
+<figcaption><span class="path">one entry from tools/list</span><span></span></figcaption>
+<pre class="highlight"><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;_meta&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;fastmcp&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;tags&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Licences attached to a title.&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;inputSchema&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;title_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a title identifier such as T-1042.&quot;</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">&quot;territory&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;anyOf&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">          </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;null&quot;</span>
+<span class="w">          </span><span class="p">}</span>
+<span class="w">        </span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ISO 3166-1 alpha-2 code, e.g. GB. Omit for every territory.&quot;</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;anyOf&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">          </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;null&quot;</span>
+<span class="w">          </span><span class="p">}</span>
+<span class="w">        </span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;active, expired or pending. Omit for all three.&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">&quot;title_id&quot;</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;additionalProperties&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;find_licences&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;outputSchema&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;result&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;items&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;additionalProperties&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span>
+<span class="w">        </span><span class="p">},</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;array&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">&quot;result&quot;</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;x-fastmcp-wrap-result&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Find Licences&quot;</span>
+<span class="p">}</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Read that as a prompt fragment, because that is what it is. The model sees the name, the
+description, the parameter names, the parameter descriptions, and the JSON Schema types.
+It does not see your implementation, your comments, or your intent.</p>
+
+<p>Two details are worth pausing on. First, the description is
+<em>"Licences attached to a title."</em> — one line, even though the Python docstring is
+longer. FastMCP takes the first line as the tool description and lifts the
+<code>Args:</code> section into per-parameter descriptions. That is a sensible convention
+and it means the first line of your docstring is doing more work than you think.</p>
+
+<p>Second, look at the <code>outputSchema</code>. The tool returns a list, and JSON Schema
+requires an object at the top, so FastMCP has wrapped it:
+<code>{"result": [...]}</code>, flagged with <code>x-fastmcp-wrap-result</code>. Your
+return type is not always the shape on the wire. Chapter 10 has opinions about this.</p>
+
+<h2 id="results-and-the-field-that-should-be-there">Results, and the field that should be there<a class="anchor" href="#results-and-the-field-that-should-be-there" aria-label="Link to this section">#</a></h2>
+
+<!-- include: code/labs/wire/transcripts/tools-call.response.json title=tools/call_—_response -->
+<figure class="snippet">
+<figcaption><span class="path">tools/call — response</span><span></span></figcaption>
+<pre class="highlight"><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;jsonrpc&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2.0&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;result&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;text&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;{\&quot;id\&quot;:\&quot;T-1152\&quot;,\&quot;name\&quot;:\&quot;The Winter Cartograph: Third Season\&quot;,\&quot;kind\&quot;:\&quot;series\&quot;,\&quot;release_year\&quot;:1999,\&quot;original_language\&quot;:\&quot;en\&quot;,\&quot;runtime_minutes\&quot;:31,\&quot;synopsis\&quot;:\&quot;A series from 1999. Synopsis text is generated and carries no meaning.\&quot;,\&quot;licences\&quot;:180,\&quot;active\&quot;:63,\&quot;territories\&quot;:33}&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;isError&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;structuredContent&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;T-1152&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The Winter Cartograph: Third Season&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;series&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;release_year&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1999</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;original_language&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;en&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;runtime_minutes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">31</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;synopsis&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;A series from 1999. Synopsis text is generated and carries no meaning.&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;licences&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">180</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;active&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">63</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;territories&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">33</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>A result carries <code>content</code> — a list of content blocks, here one text block
+containing serialised JSON — and, since 2025-06-18, <code>structuredContent</code>, which
+is the same data as an actual object. Most clients will use the structured form when it is
+present and fall back to the text.</p>
+
+<p>Now the part that is missing.</p>
+
+<div class="callout spec">
+<span class="label">Specification 2026-07-28</span>
+<p>All results carry a required <code>resultType</code> field: <code>"complete"</code> for
+an ordinary result, <code>"input_required"</code> for the interim result of a multi
+round-trip request. Clients <strong>MUST</strong> treat a result from an earlier-protocol
+server that omits the field as <code>"complete"</code>.</p>
+</div>
+
+<p>There is no <code>resultType</code> in that response. FastMCP 4.0.3 does not emit one,
+and it does not emit <code>ttlMs</code> or <code>cacheScope</code> on list results either,
+both of which the revision requires. The specification anticipated servers like this — that
+is what the "treat a missing field as complete" rule is for — but it is worth being clear
+about what you are shipping. A server built on the library as it stands today is not fully
+conformant with the revision it claims to target.</p>
+
+<p>The last clause of that rule is the interesting one. <code>resultType</code> exists to
+distinguish a finished answer from a server saying <em>I need more from you</em>. Which
+brings us to the mechanism it was added for.</p>
+
+<h2 id="multi-round-trip-requests">Multi round-trip requests<a class="anchor" href="#multi-round-trip-requests" aria-label="Link to this section">#</a></h2>
+
+<p>Older MCP let a server send requests <em>back</em> at the client mid-call: ask the
+client's model to sample something, ask the user a question, ask for the list of roots.
+That required a bidirectional, stateful connection, which is precisely what the revision
+set out to remove.</p>
+
+<p>The replacement inverts it. A server that needs more information returns a result with
+<code>resultType: "input_required"</code> and an <code>inputRequests</code> field
+describing what it needs. The client gathers the answers and <em>retries the original
+request</em>, attaching <code>inputResponses</code>. Nothing is held open in between.</p>
+
+<p>The consequence for design is that a server which needs a second piece of information
+must be able to reconstruct its position from the retried request alone. There is no
+"where we were" to resume. If your call has expensive state behind it, you encode a handle
+into <code>requestState</code> and hand it back — which is the same technique chapter 12
+uses for everything else.</p>
+
+<h2 id="errors-two-kinds-and-only-one-is-an-error">Errors: two kinds, and only one is an error<a class="anchor" href="#errors-two-kinds-and-only-one-is-an-error" aria-label="Link to this section">#</a></h2>
+
+<p>Ask for a title that does not exist:</p>
+
+<!-- include: code/labs/wire/transcripts/tools-call-error.response.json title=a_tool_that_failed -->
+<figure class="snippet">
+<figcaption><span class="path">a tool that failed</span><span></span></figcaption>
+<pre class="highlight"><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;jsonrpc&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2.0&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;result&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;text&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;no title &#39;T-nope&#39;; use search_titles to find one&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;isError&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>That is a <em>successful</em> JSON-RPC response containing a result with
+<code>isError: true</code>. The distinction matters: protocol-level errors are for the
+client, tool-level errors are for the model. A tool failure is information the model can
+act on — and act on it will, if you write the message for that audience. "no title
+'T-nope'; use search_titles to find one" is a instruction. <code>KeyError: 'T-nope'</code>
+is not.</p>
+
+<p>A genuine protocol error looks different:</p>
+
+<!-- include: code/labs/wire/transcripts/unknown-method.response.json title=a_method_that_does_not_exist -->
+<figure class="snippet">
+<figcaption><span class="path">a method that does not exist</span><span></span></figcaption>
+<pre class="highlight"><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;jsonrpc&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2.0&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">8</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">-32601</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Method not found&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;tools/nope&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<div class="callout spec">
+<span class="label">Specification 2026-07-28</span>
+<p>The revision partitions the JSON-RPC server-error range: <code>-32000</code> to
+<code>-32019</code> stays implementation-defined, <code>-32020</code> to
+<code>-32099</code> is reserved for the specification. Resource-not-found moved from
+<code>-32002</code> to <code>-32602</code> to match plain JSON-RPC.</p>
+</div>
+
+<h2 id="the-method-your-server-does-not-implement">The method your server does not implement<a class="anchor" href="#the-method-your-server-does-not-implement" aria-label="Link to this section">#</a></h2>
+
+<p>Ask <code>ledger</code> to describe itself:</p>
+
+<!-- include: code/labs/wire/transcripts/discover.response.json title=server/discover -->
+<figure class="snippet">
+<figcaption><span class="path">server/discover</span><span></span></figcaption>
+<pre class="highlight"><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;jsonrpc&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2.0&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">-32601</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Method not found&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;server/discover&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p><code>server/discover</code> is how a client learns which protocol versions a server
+speaks, what it is capable of, and who it is — before sending anything else. The
+specification says servers <strong>MUST</strong> implement it. FastMCP 4.0.3 answers
+"Method not found".</p>
+
+<p>This is not a scandal. Every SDK is mid-migration through the largest revision the
+protocol has had, and FastMCP is moving faster than most. It is, however, exactly the
+class of fact you cannot learn from a release note, and the reason this chapter is built
+out of captured responses. When you need to know what your server does, send it a request.
+<code>docs/protocol-notes.md</code> in this repository tracks what was true when, and
+re-running <code>capture.sh</code> is how you find out what changed.</p>
+
+<h2 id="resources-and-prompts-on-the-wire">Resources and prompts on the wire<a class="anchor" href="#resources-and-prompts-on-the-wire" aria-label="Link to this section">#</a></h2>
+
+<p>Both are simpler than tools. <code>resources/list</code> returns URIs with metadata;
+<code>resources/read</code> returns contents. Here is an agreement:</p>
+
+<!-- include: code/labs/wire/transcripts/resources-read.response.json title=resources/read -->
+<figure class="snippet">
+<figcaption><span class="path">resources/read</span><span></span></figcaption>
+<pre class="highlight"><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;jsonrpc&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2.0&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">6</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;result&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;contents&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;mimeType&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;application/json&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;text&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;{\n  \&quot;id\&quot;: \&quot;A-100-0\&quot;,\n  \&quot;licensee_id\&quot;: \&quot;L-100\&quot;,\n  \&quot;kind\&quot;: \&quot;master\&quot;,\n  \&quot;parent_id\&quot;: null,\n  \&quot;reference\&quot;: \&quot;MSA/100/0\&quot;,\n  \&quot;signed_on\&quot;: \&quot;2019-10-23\&quot;,\n  \&quot;parent\&quot;: null,\n  \&quot;children\&quot;: [\n    {\n      \&quot;id\&quot;: \&quot;A-100-0.2\&quot;,\n      \&quot;kind\&quot;: \&quot;amendment\&quot;,\n      \&quot;reference\&quot;: \&quot;AMD/100/0/2\&quot;,\n      \&quot;signed_on\&quot;: \&quot;2019-12-12\&quot;,\n      \&quot;uri\&quot;: \&quot;ledger://agreement/A-100-0.2\&quot;\n    },\n    {\n      \&quot;id\&quot;: \&quot;A-100-0.0\&quot;,\n      \&quot;kind\&quot;: \&quot;amendment\&quot;,\n      \&quot;reference\&quot;: \&quot;AMD/100/0/0\&quot;,\n      \&quot;signed_on\&quot;: \&quot;2020-06-05\&quot;,\n      \&quot;uri\&quot;: \&quot;ledger://agreement/A-100-0.0\&quot;\n    },\n    {\n      \&quot;id\&quot;: \&quot;A-100-0.1\&quot;,\n      \&quot;kind\&quot;: \&quot;amendment\&quot;,\n      \&quot;reference\&quot;: \&quot;AMD/100/0/1\&quot;,\n      \&quot;signed_on\&quot;: \&quot;2020-10-31\&quot;,\n      \&quot;uri\&quot;: \&quot;ledger://agreement/A-100-0.1\&quot;\n    }\n  ],\n  \&quot;licences_granted\&quot;: 13\n}&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;uri&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ledger://agreement/A-100-0&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Note what this resource returns for its children: URIs, not contents. It hands back
+enough to decide where to go next and no more. That habit is worth forming early — it is
+the entire technique of chapter 21, applied to a corpus far too large to read.</p>
+
+<p>Prompts are text templates with typed arguments; <code>prompts/get</code> renders one
+into a list of messages the client can send. Nothing about the mechanism is surprising.
+What is surprising is how much of a team's operational knowledge fits into one, which is
+chapter 6.</p>
+
+<h2 id="transports">Transports<a class="anchor" href="#transports" aria-label="Link to this section">#</a></h2>
+
+<p><strong>stdio.</strong> The client spawns your server as a subprocess and speaks
+newline-delimited JSON over its standard input and output. Chapter 3 uses it. Anything
+your server writes to stdout that is not a protocol message corrupts the stream — this is
+the single most common way a first server fails, and it is usually a stray
+<code>print()</code>.</p>
+
+<p><strong>Streamable HTTP.</strong> One endpoint, POST for everything. A response is
+either JSON or an SSE stream when the server wants to report progress before finishing.
+The old HTTP+SSE transport with its separate GET endpoint is deprecated.</p>
+
+<p>Two things left this transport in the current revision and both matter. The GET endpoint
+and <code>resources/subscribe</code> are replaced by <code>subscriptions/listen</code>, a
+single long-lived POST-response stream you opt into by notification type. And stream
+resumability is gone: there is no <code>Last-Event-ID</code>, no redelivery, and a broken
+response stream loses the in-flight request. The client must reissue it as a new request
+with a new id. Chapter 13 is about designing tools that survive being called twice.</p>
+
+<h2 id="what-to-take-from-this">What to take from this<a class="anchor" href="#what-to-take-from-this" aria-label="Link to this section">#</a></h2>
+
+<p>The protocol is small. Six methods carry almost all real traffic:
+<code>tools/list</code>, <code>tools/call</code>, <code>resources/list</code>,
+<code>resources/read</code>, <code>prompts/list</code>, <code>prompts/get</code>. The
+difficulty in the rest of this book is not protocol complexity — it is that everything you
+put through those six methods is text in someone's context window, and that the protocol
+now guarantees you nothing between one call and the next.</p>
+
+<p>Run the capture script. Read the responses. It takes ten minutes and it will make every
+later chapter concrete.</p>
+<!-- END:body -->
+<!-- BEGIN:pager -->
+<nav class="pager" aria-label="Chapter">
+<a class="prev" href="ch01-what-mcp-actually-is.html"><span class="dir">Previous</span><span class="name">1. What MCP actually is</span></a>
+<span class="spacer"></span>
+</nav>
+<!-- END:pager -->
+</main>
+</div>
+</body>
+</html>
