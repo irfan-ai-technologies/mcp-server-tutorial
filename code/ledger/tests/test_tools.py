@@ -99,7 +99,9 @@ async def test_read_only_tools_say_so(client):
     async with client:
         for tool in await client.list_tools():
             assert tool.annotations is not None, f"{tool.name} has no annotations"
-            assert tool.annotations.read_only_hint is True, f"{tool.name} claims to write"
+            assert tool.annotations.read_only_hint is True, (
+                f"{tool.name} claims to write"
+            )
 
 
 async def test_licence_detail_walks_up_to_a_master(client):
