@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- BEGIN:title --><title>1. What MCP actually is &mdash; MCP Servers: Zero to Hero</title><!-- END:title -->
+<link rel="stylesheet" href="../assets/book.css">
+<script src="../assets/book.js" defer></script>
+</head>
+<body>
+<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme">◐</button>
+<div class="shell">
+
+<nav class="sidebar" aria-label="Contents">
+<!-- BEGIN:sidebar -->
+<a class="brand" href="../index.html">MCP Servers: Zero to Hero</a>
+<p class="part">Part 0 — Orientation</p>
+<ol>
+<li><a href="ch01-what-mcp-actually-is.html" aria-current="page"><span class="num">1</span>What MCP actually is</a></li>
+<li><a aria-disabled="true"><span class="num">2</span>The protocol in one chapter</a></li>
+</ol>
+<p class="part">Part 1 — Zero: a server that works</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">3</span>First server</a></li>
+<li><a aria-disabled="true"><span class="num">4</span>Tools</a></li>
+<li><a aria-disabled="true"><span class="num">5</span>Resources and templates</a></li>
+<li><a aria-disabled="true"><span class="num">6</span>Prompts</a></li>
+<li><a aria-disabled="true"><span class="num">7</span>Testing without an LLM</a></li>
+</ol>
+<p class="part">Part 2 — The client&#x27;s point of view</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">8</span>What the model actually sees</a></li>
+<li><a aria-disabled="true"><span class="num">9</span>Tool design is prompt engineering</a></li>
+<li><a aria-disabled="true"><span class="num">10</span>Result shaping</a></li>
+</ol>
+<p class="part">Part 3 — Scale</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">11</span>Going HTTP</a></li>
+<li><a aria-disabled="true"><span class="num">12</span>Life after sessions</a></li>
+<li><a aria-disabled="true"><span class="num">13</span>Failure</a></li>
+<li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
+<li><a aria-disabled="true"><span class="num">15</span>Long-running work</a></li>
+<li><a aria-disabled="true"><span class="num">16</span>Observability</a></li>
+<li><a aria-disabled="true"><span class="num">17</span>Identity and multi-tenancy</a></li>
+<li><a aria-disabled="true"><span class="num">18</span>Security</a></li>
+</ol>
+<p class="part">Part 4 — The context problem</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">19</span>Progressive disclosure I: shrink the surface</a></li>
+<li><a aria-disabled="true"><span class="num">20</span>Progressive disclosure II: search then load</a></li>
+<li><a aria-disabled="true"><span class="num">21</span>Progressive disclosure III: resources as the channel</a></li>
+<li><a aria-disabled="true"><span class="num">22</span>jq as a tool</a></li>
+<li><a aria-disabled="true"><span class="num">23</span>Code mode</a></li>
+</ol>
+<p class="part">Part 5 — Shipping</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">24</span>Packaging and distribution</a></li>
+<li><a aria-disabled="true"><span class="num">25</span>Evaluating a server</a></li>
+<li><a aria-disabled="true"><span class="num">26</span>Anti-patterns and a review checklist</a></li>
+</ol>
+<p class="part">Appendices</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">A</span>The same server without FastMCP</a></li>
+<li><a aria-disabled="true"><span class="num">B</span>Migrating 2025-11-25 to 2026-07-28</a></li>
+<li><a aria-disabled="true"><span class="num">C</span>jq cookbook for agent tool results</a></li>
+<li><a aria-disabled="true"><span class="num">D</span>Glossary</a></li>
+</ol>
+<!-- END:sidebar -->
+</nav>
+
+<main class="content">
+
+<header class="chapter-head">
+<!-- BEGIN:head -->
+<p class="eyebrow">Part 0 — Orientation &middot; Chapter 1</p>
+<h1>What MCP actually is</h1>
+<p class="standfirst">Protocol, not framework. Where it sits next to plain function calling and an API gateway — and the honest case against using it.</p>
+<div class="chapter-meta"><span><b>Status</b> <span class="status status-draft">draft</span></span><span><b>Protocol</b> <code>2026-07-28</code></span></div>
+<!-- END:head -->
+</header>
+
+<!-- BEGIN:body -->
+<p>Most explanations of the Model Context Protocol start with the USB-C analogy. It is a
+bad analogy, and it has cost the ecosystem a lot of badly-designed servers. USB-C is a
+physical standard where correctness is binary: the plug fits or it does not. MCP is a
+text protocol whose output lands in a language model's context window, where correctness
+is a spectrum and the failure modes are things like <em>the model chose the wrong tool
+because your description was ambiguous</em> and <em>one successful call consumed 40% of
+the window</em>.</p>
+
+<p>So this chapter does something less exciting than an analogy. It says exactly what MCP
+is, what it replaces, what it costs, and when you should not use it — before the rest of
+the book commits you to building one.</p>
+
+<h2 id="the-problem-it-solves">The problem it solves<a class="anchor" href="#the-problem-it-solves" aria-label="Link to this section">#</a></h2>
+
+<p>Before MCP, every model host that wanted to reach an external system wrote its own
+integration: its own tool-definition format, its own auth handling, its own transport, its
+own idea of what a "resource" was. An integration written for one host did not run in
+another. The work was <em>N hosts × M systems</em>, and almost all of it was the same work
+done incompatibly.</p>
+
+<p>MCP makes that <em>N + M</em>. A server exposes capabilities once; any conforming client
+can use them. That is the whole pitch, and it is a real one — but notice what it is
+<em>not</em>. It is not a way to make a model better at using your system. It standardises
+the plumbing, not the judgement.</p>
+
+<h2 id="a-protocol-not-a-framework">A protocol, not a framework<a class="anchor" href="#a-protocol-not-a-framework" aria-label="Link to this section">#</a></h2>
+
+<p>MCP is a JSON-RPC 2.0 message vocabulary plus rules for carrying it over stdio or HTTP.
+That is the entire specification surface. FastMCP, the official SDKs and every other
+library you will meet in this book are conveniences layered over it: useful, replaceable,
+and occasionally hiding something you need to see.</p>
+
+<p>It helps to place it against the two things people most often confuse it with.</p>
+
+<div class="table-scroll">
+<table>
+<thead>
+<tr><th>Concern</th><th>Plain function calling</th><th>API gateway</th><th>MCP</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td>Who defines the tool surface</td>
+  <td>The application, per host</td>
+  <td>The API owner</td>
+  <td>The server, once, for every host</td>
+</tr>
+<tr>
+  <td>Consumer</td>
+  <td>One model, one app</td>
+  <td>Any HTTP client</td>
+  <td>Any conforming MCP client</td>
+</tr>
+<tr>
+  <td>Optimised for</td>
+  <td>Whatever you write</td>
+  <td>Machines with documentation</td>
+  <td>A model reading schemas at inference time</td>
+</tr>
+<tr>
+  <td>Cost model</td>
+  <td>Tokens you control</td>
+  <td>Requests</td>
+  <td>Tokens you mostly do not control</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<p>That last row is the one this book is organised around. Your tool names, descriptions and
+schemas are loaded into a context window you are not paying for and cannot see. Every
+design decision in the chapters that follow is downstream of that fact.</p>
+
+<h2 id="the-primitives">The primitives<a class="anchor" href="#the-primitives" aria-label="Link to this section">#</a></h2>
+
+<p>Three things a server can expose, and one thing it can now hand back mid-request.</p>
+
+<p><strong>Tools</strong> are model-invoked actions — the primitive nearly everyone
+over-uses. <strong>Resources</strong> are application-controlled context the client can
+read by URI, which makes them the right home for anything a model should be able to
+navigate rather than fetch wholesale. <strong>Prompts</strong> are user-invoked templates,
+the least-used primitive and the one with the clearest reason to exist once you see it.
+Chapters 4 through 6 take one each.</p>
+
+<p>The fourth thing is newer: a result can now come back as <code>input_required</code>,
+carrying requests for information the server needs before it can finish. That replaces the
+old model of servers making requests back at clients, and it changes how you design
+anything interactive.</p>
+
+<h2 id="what-the-2026-07-28-revision-changed">What the 2026-07-28 revision changed<a class="anchor" href="#what-the-2026-07-28-revision-changed" aria-label="Link to this section">#</a></h2>
+
+<div class="callout spec">
+<span class="label">Specification 2026-07-28</span>
+<p>Protocol-level sessions are gone, along with the <code>Mcp-Session-Id</code> header and
+the <code>initialize</code> handshake. Every request now carries its protocol version and
+client capabilities in <code>_meta</code>. Servers that need state across calls mint
+explicit handles and take them back as ordinary tool arguments.</p>
+</div>
+
+<p>This is the largest break since MCP launched, and it is worth knowing before you read
+anything else about the protocol: a large fraction of the MCP writing on the internet now
+describes a protocol that no longer exists. Sessions, <code>initialize</code>,
+<code>ping</code>, stream resumability, and server-initiated sampling calls are either
+removed or deprecated. Chapter 2 reads the current wire format directly so you can tell the
+difference yourself.</p>
+
+<h2 id="the-honest-case-against-it">The honest case against it<a class="anchor" href="#the-honest-case-against-it" aria-label="Link to this section">#</a></h2>
+
+<div class="callout warn">
+<span class="label">Before you build one</span>
+<p>If exactly one application will ever call your system, and you control that
+application, MCP is overhead. Write the function.</p>
+</div>
+
+<p>The protocol earns its keep when the set of clients is open or unknown — several agents,
+several teams, or a capability you intend to publish. It costs you a wire format to
+maintain, a tool contract you can no longer change freely, an auth story, and a permanent
+tax on someone else's context window. Those are real costs and this book will keep naming
+them.</p>
+
+<p>There is also a category error worth heading off: MCP is not a security boundary, not a
+rate limiter, and not a substitute for an API. It sits in front of your system the way a
+UI does. Chapter 18 is about what goes wrong when people forget that.</p>
+
+<h2 id="what-this-book-assumes">What this book assumes<a class="anchor" href="#what-this-book-assumes" aria-label="Link to this section">#</a></h2>
+
+<p>That you write Python, have shipped something with async and HTTP in it, and have opinions
+about retries. Part 1 gets everyone to a working, tested server in five chapters and then
+stops; the budget is spent on Parts 3 and 4, where the interesting failures are.</p>
+
+<p>Everything is built against one running project — <code>ledger</code>, an MCP server over
+a media rights catalogue — which grows chapter by chapter. Every chapter that changes it
+names the tag you can check out to see the code exactly as it stood there.</p>
+<!-- END:body -->
+
+<!-- BEGIN:pager -->
+<!-- END:pager -->
+
+</main>
+</div>
+</body>
+</html>

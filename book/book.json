@@ -14,7 +14,7 @@
           "slug": "ch01-what-mcp-actually-is",
           "title": "What MCP actually is",
           "standfirst": "Protocol, not framework. Where it sits next to plain function calling and an API gateway \u2014 and the honest case against using it.",
-          "status": "planned"
+          "status": "draft"
         },
         {
           "num": 2,
