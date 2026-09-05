@@ -82,15 +82,15 @@
 <!-- BEGIN:body -->
 <p>Most explanations of the Model Context Protocol start with the USB-C analogy. It is a
 bad analogy, and it has cost the ecosystem a lot of badly-designed servers. USB-C is a
-physical standard where correctness is binary: the plug fits or it does not. MCP is a
-text protocol whose output lands in a language model's context window, where correctness
-is a spectrum and the failure modes are things like <em>the model chose the wrong tool
-because your description was ambiguous</em> and <em>one successful call consumed 40% of
-the window</em>.</p>
+physical standard where correctness is binary: the plug fits or it does not. MCP is a text
+protocol whose output lands in a language model's context window, where correctness is a
+spectrum and the failure modes are things like <em>the model chose the wrong tool because
+two descriptions were ambiguous</em> and <em>one successful call consumed 40% of the
+window</em>.</p>
 
-<p>So this chapter does something less exciting than an analogy. It says exactly what MCP
-is, what it replaces, what it costs, and when you should not use it — before the rest of
-the book commits you to building one.</p>
+<p>So this chapter does something less exciting than an analogy. It says what MCP is, what
+it replaces, what it costs, and when you should not use it — before the rest of the book
+commits you to building one.</p>
 
 <h2 id="the-problem-it-solves">The problem it solves<a class="anchor" href="#the-problem-it-solves" aria-label="Link to this section">#</a></h2>
 
@@ -103,14 +103,16 @@ done incompatibly.</p>
 <p>MCP makes that <em>N + M</em>. A server exposes capabilities once; any conforming client
 can use them. That is the whole pitch, and it is a real one — but notice what it is
 <em>not</em>. It is not a way to make a model better at using your system. It standardises
-the plumbing, not the judgement.</p>
+the plumbing, not the judgement. A badly-described tool is exactly as badly-described after
+you put it behind MCP, and now it is badly-described for everyone.</p>
 
 <h2 id="a-protocol-not-a-framework">A protocol, not a framework<a class="anchor" href="#a-protocol-not-a-framework" aria-label="Link to this section">#</a></h2>
 
 <p>MCP is a JSON-RPC 2.0 message vocabulary plus rules for carrying it over stdio or HTTP.
-That is the entire specification surface. FastMCP, the official SDKs and every other
-library you will meet in this book are conveniences layered over it: useful, replaceable,
-and occasionally hiding something you need to see.</p>
+That is the entire specification surface. FastMCP, the official SDKs and every other library
+in this book are conveniences layered over it: useful, replaceable, and — as chapter 2
+demonstrates with real responses — occasionally behind the specification in ways you need
+to know about.</p>
 
 <p>It helps to place it against the two things people most often confuse it with.</p>
 
@@ -139,6 +141,12 @@ and occasionally hiding something you need to see.</p>
   <td>A model reading schemas at inference time</td>
 </tr>
 <tr>
+  <td>Discovery</td>
+  <td>Compile time</td>
+  <td>Out of band, usually a portal</td>
+  <td>At runtime, in the conversation</td>
+</tr>
+<tr>
   <td>Cost model</td>
   <td>Tokens you control</td>
   <td>Requests</td>
@@ -148,25 +156,36 @@ and occasionally hiding something you need to see.</p>
 </table>
 </div>
 
-<p>That last row is the one this book is organised around. Your tool names, descriptions and
-schemas are loaded into a context window you are not paying for and cannot see. Every
-design decision in the chapters that follow is downstream of that fact.</p>
+<p>The last two rows are the ones this book is organised around. Discovery happens at
+runtime, which means your descriptions are read by a model rather than by a developer with
+time to think. And the reading is paid for in a context window you are not billed for and
+cannot see. Every design decision in the chapters that follow is downstream of those two
+facts.</p>
 
 <h2 id="the-primitives">The primitives<a class="anchor" href="#the-primitives" aria-label="Link to this section">#</a></h2>
 
-<p>Three things a server can expose, and one thing it can now hand back mid-request.</p>
+<p>Three things a server exposes, distinguished by <em>who decides</em> to use them.</p>
 
-<p><strong>Tools</strong> are model-invoked actions — the primitive nearly everyone
-over-uses. <strong>Resources</strong> are application-controlled context the client can
-read by URI, which makes them the right home for anything a model should be able to
-navigate rather than fetch wholesale. <strong>Prompts</strong> are user-invoked templates,
-the least-used primitive and the one with the clearest reason to exist once you see it.
-Chapters 4 through 6 take one each.</p>
+<p><strong>Tools</strong> are model-invoked: the model reads the descriptions and chooses.
+This is the primitive nearly everyone over-uses, because it is the one that obviously
+works. Every tool you add is a permanent line item in the context budget of every
+conversation, whether or not it is called.</p>
 
-<p>The fourth thing is newer: a result can now come back as <code>input_required</code>,
-carrying requests for information the server needs before it can finish. That replaces the
-old model of servers making requests back at clients, and it changes how you design
-anything interactive.</p>
+<p><strong>Resources</strong> are application-invoked: the client decides to load them and
+addresses them by URI. If a user has a document open, the client can put it in context
+without the model having to ask. Resources are also how you let a model <em>navigate</em>
+a large corpus rather than fetch it, which is the whole of chapter 21.</p>
+
+<p><strong>Prompts</strong> are user-invoked: templates a person picks deliberately. This
+is the least-used primitive and the one with the clearest reason to exist — it is where a
+domain's standard question lives, with the method already correct. Chapter 6 makes the
+case.</p>
+
+<p>The fourth thing is newer and is not a primitive so much as a shape a result can take. A
+server that needs more information no longer calls back to the client; it returns a result
+of type <code>input_required</code> carrying the requests, and the client retries the
+original call with the answers attached. That is the Multi Round-Trip Request pattern, and
+it replaces sampling, elicitation and roots-listing as they used to work.</p>
 
 <h2 id="what-the-2026-07-28-revision-changed">What the 2026-07-28 revision changed<a class="anchor" href="#what-the-2026-07-28-revision-changed" aria-label="Link to this section">#</a></h2>
 
@@ -179,39 +198,60 @@ explicit handles and take them back as ordinary tool arguments.</p>
 </div>
 
 <p>This is the largest break since MCP launched, and it is worth knowing before you read
-anything else about the protocol: a large fraction of the MCP writing on the internet now
-describes a protocol that no longer exists. Sessions, <code>initialize</code>,
-<code>ping</code>, stream resumability, and server-initiated sampling calls are either
-removed or deprecated. Chapter 2 reads the current wire format directly so you can tell the
-difference yourself.</p>
+anything else about the protocol. A large fraction of the MCP writing on the internet
+describes a protocol that no longer exists — not subtly out of date, but describing a
+handshake that has been deleted. Sessions, <code>initialize</code>, <code>ping</code>,
+stream resumability and server-initiated sampling are removed or deprecated.</p>
+
+<p>The direction is coherent: the protocol is being made stateless so that servers can be
+scaled horizontally like any other HTTP service, and the awkward parts — a server calling
+back into a client mid-request, a stream you were expected to resume — have been replaced
+with retry-shaped equivalents. Whether your library has caught up is a separate question,
+and chapter 2 answers it by sending requests rather than reading release notes.</p>
 
 <h2 id="the-honest-case-against-it">The honest case against it<a class="anchor" href="#the-honest-case-against-it" aria-label="Link to this section">#</a></h2>
 
 <div class="callout warn">
 <span class="label">Before you build one</span>
-<p>If exactly one application will ever call your system, and you control that
-application, MCP is overhead. Write the function.</p>
+<p>If exactly one application will ever call your system, and you control that application,
+MCP is overhead. Write the function.</p>
 </div>
 
-<p>The protocol earns its keep when the set of clients is open or unknown — several agents,
-several teams, or a capability you intend to publish. It costs you a wire format to
-maintain, a tool contract you can no longer change freely, an auth story, and a permanent
-tax on someone else's context window. Those are real costs and this book will keep naming
-them.</p>
+<p>The protocol earns its keep when the set of clients is open or unknown: several agents,
+several teams, or a capability you intend to publish. In exchange you take on a wire format
+to maintain, a tool contract you can no longer change freely, an authorisation story, a
+version to declare, and a permanent tax on someone else's context window. Those are real
+costs and this book keeps naming them rather than mentioning them once in a caveat.</p>
 
-<p>There is also a category error worth heading off: MCP is not a security boundary, not a
-rate limiter, and not a substitute for an API. It sits in front of your system the way a
-UI does. Chapter 18 is about what goes wrong when people forget that.</p>
+<p>There is also a category error worth heading off early. MCP is not a security boundary,
+not a rate limiter, not an audit log and not a substitute for an API. It sits in front of
+your system the way a user interface does, and it hands a language model the keyboard.
+Everything you would not let an enthusiastic new joiner do unsupervised on day one is
+something you should think hard about exposing. Chapter 18 is about what goes wrong when
+people forget this, and the answer is usually worse than they expect.</p>
 
-<h2 id="what-this-book-assumes">What this book assumes<a class="anchor" href="#what-this-book-assumes" aria-label="Link to this section">#</a></h2>
+<h2 id="how-this-book-is-organised">How this book is organised<a class="anchor" href="#how-this-book-is-organised" aria-label="Link to this section">#</a></h2>
 
-<p>That you write Python, have shipped something with async and HTTP in it, and have opinions
-about retries. Part 1 gets everyone to a working, tested server in five chapters and then
-stops; the budget is spent on Parts 3 and 4, where the interesting failures are.</p>
+<p>Part 1 gets everyone to a working, tested server in five chapters and then stops. If you
+have built one already, skim it for chapter 7 — the testing approach everything later
+depends on — and move on.</p>
 
-<p>Everything is built against one running project — <code>ledger</code>, an MCP server over
-a media rights catalogue — which grows chapter by chapter. Every chapter that changes it
-names the tag you can check out to see the code exactly as it stood there.</p>
+<p>Part 2 changes the point of view from yours to the client's, and prices what you have
+built. Part 3 is scale: statelessness, failure, cost, identity and security, and it is the
+longest part of the book. Part 4 is the context problem — progressive disclosure, filtering
+tool results with <code>jq</code>, and code mode — which is where a server stops being a
+demo. Part 5 is shipping.</p>
+
+<p>Everything is built against one running server, <code>ledger</code>, over a synthetic
+media rights catalogue: titles, licences, territories, windows and a corpus of nested
+agreements. It is a good teaching domain because the problems arrive honestly. One title in
+the catalogue carries 180 licences across 33 territories, and the obvious tool returns all
+of them. You will meet that title repeatedly.</p>
+
+<p>Every chapter that changes the server names a tag, so you can check out the code exactly
+as it stood at the end of it. Every claim about the protocol links to the specification, and
+every number was measured on the code in this repository rather than taken from a blog post.
+Where the two disagree — and they do — the chapter says so.</p>
 <!-- END:body -->
 
 <!-- BEGIN:pager -->
