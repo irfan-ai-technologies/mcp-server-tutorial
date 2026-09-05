@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- BEGIN:title --><title>7. Testing without an LLM &mdash; MCP Servers: Zero to Hero</title><!-- END:title -->
+<link rel="stylesheet" href="../assets/book.css">
+<script src="../assets/book.js" defer></script>
+</head>
+<body>
+<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme">◐</button>
+<div class="shell">
+<nav class="sidebar" aria-label="Contents">
+<!-- BEGIN:sidebar -->
+<a class="brand" href="../index.html">MCP Servers: Zero to Hero</a>
+<p class="part">Part 0 — Orientation</p>
+<ol>
+<li><a href="ch01-what-mcp-actually-is.html"><span class="num">1</span>What MCP actually is</a></li>
+<li><a href="ch02-the-protocol-in-one-chapter.html"><span class="num">2</span>The protocol in one chapter</a></li>
+</ol>
+<p class="part">Part 1 — Zero: a server that works</p>
+<ol>
+<li><a href="ch03-first-server.html"><span class="num">3</span>First server</a></li>
+<li><a href="ch04-tools.html"><span class="num">4</span>Tools</a></li>
+<li><a href="ch05-resources.html"><span class="num">5</span>Resources and templates</a></li>
+<li><a href="ch06-prompts.html"><span class="num">6</span>Prompts</a></li>
+<li><a href="ch07-testing-without-an-llm.html" aria-current="page"><span class="num">7</span>Testing without an LLM</a></li>
+</ol>
+<p class="part">Part 2 — The client&#x27;s point of view</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">8</span>What the model actually sees</a></li>
+<li><a aria-disabled="true"><span class="num">9</span>Tool design is prompt engineering</a></li>
+<li><a aria-disabled="true"><span class="num">10</span>Result shaping</a></li>
+</ol>
+<p class="part">Part 3 — Scale</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">11</span>Going HTTP</a></li>
+<li><a aria-disabled="true"><span class="num">12</span>Life after sessions</a></li>
+<li><a aria-disabled="true"><span class="num">13</span>Failure</a></li>
+<li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
+<li><a aria-disabled="true"><span class="num">15</span>Long-running work</a></li>
+<li><a aria-disabled="true"><span class="num">16</span>Observability</a></li>
+<li><a aria-disabled="true"><span class="num">17</span>Identity and multi-tenancy</a></li>
+<li><a aria-disabled="true"><span class="num">18</span>Security</a></li>
+</ol>
+<p class="part">Part 4 — The context problem</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">19</span>Progressive disclosure I: shrink the surface</a></li>
+<li><a aria-disabled="true"><span class="num">20</span>Progressive disclosure II: search then load</a></li>
+<li><a aria-disabled="true"><span class="num">21</span>Progressive disclosure III: resources as the channel</a></li>
+<li><a aria-disabled="true"><span class="num">22</span>jq as a tool</a></li>
+<li><a aria-disabled="true"><span class="num">23</span>Code mode</a></li>
+</ol>
+<p class="part">Part 5 — Shipping</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">24</span>Packaging and distribution</a></li>
+<li><a aria-disabled="true"><span class="num">25</span>Evaluating a server</a></li>
+<li><a aria-disabled="true"><span class="num">26</span>Anti-patterns and a review checklist</a></li>
+</ol>
+<p class="part">Appendices</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">A</span>The same server without FastMCP</a></li>
+<li><a aria-disabled="true"><span class="num">B</span>Migrating 2025-11-25 to 2026-07-28</a></li>
+<li><a aria-disabled="true"><span class="num">C</span>jq cookbook for agent tool results</a></li>
+<li><a aria-disabled="true"><span class="num">D</span>Glossary</a></li>
+</ol>
+<!-- END:sidebar -->
+</nav>
+<main class="content">
+<header class="chapter-head">
+<!-- BEGIN:head -->
+<p class="eyebrow">Part 1 — Zero: a server that works &middot; Chapter 7</p>
+<h1>Testing without an LLM</h1>
+<p class="standfirst">In-process client, golden transcripts, contract tests over the tool surface. Everything after this depends on it.</p>
+<div class="chapter-meta"><span><b>Status</b> <span class="status status-draft">draft</span></span><span><b>Protocol</b> <code>2026-07-28</code></span><span><b>Code</b> <code>git checkout ch07-testing</code></span></div>
+<!-- END:head -->
+</header>
+<!-- BEGIN:body -->
+<p>There is a habit in this field of testing servers by talking to them. You wire up a
+model, ask it something, read the answer, and decide it looks right. It is slow, it costs
+money, it is non-deterministic, and when it fails you cannot tell whether the server, the
+prompt or the model was wrong.</p>
+
+<p>Almost everything worth knowing about an MCP server can be checked without a model in
+the loop, in under two seconds. That is what this chapter builds, and every claim the rest
+of this book makes about <code>ledger</code> rests on it.</p>
+
+<h2 id="talk-to-it-as-a-client-in-process">Talk to it as a client, in-process<a class="anchor" href="#talk-to-it-as-a-client-in-process" aria-label="Link to this section">#</a></h2>
+
+<p>The key move is to test through a real MCP client rather than by calling your Python
+functions. Calling <code>find_licences()</code> directly tests your SQL. Calling it through
+a client tests the schema, the serialisation, the error path, the annotations and the
+registration — all the parts that only exist once the function has become a tool.</p>
+
+<!-- include: code/ledger/tests/conftest.py lang=python -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/tests/conftest.py</span><span></span></figcaption>
+<pre class="highlight"><code><span class="sd">&quot;&quot;&quot;Every test runs against a freshly generated small catalogue.</span>
+
+<span class="sd">The fixture points LEDGER_DB at a temporary file, so a test run never depends on</span>
+<span class="sd">— or disturbs — whatever the reader has in data/generated/.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">importlib.util</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+
+<span class="n">REPO_ROOT</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span><span class="o">.</span><span class="n">parents</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+<span class="n">GENERATOR</span> <span class="o">=</span> <span class="n">REPO_ROOT</span> <span class="o">/</span> <span class="s2">&quot;data&quot;</span> <span class="o">/</span> <span class="s2">&quot;generate.py&quot;</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_load_generator</span><span class="p">():</span>
+    <span class="n">spec</span> <span class="o">=</span> <span class="n">importlib</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">spec_from_file_location</span><span class="p">(</span><span class="s2">&quot;ledger_datagen&quot;</span><span class="p">,</span> <span class="n">GENERATOR</span><span class="p">)</span>
+    <span class="n">module</span> <span class="o">=</span> <span class="n">importlib</span><span class="o">.</span><span class="n">util</span><span class="o">.</span><span class="n">module_from_spec</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">modules</span><span class="p">[</span><span class="n">spec</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">module</span>
+    <span class="n">spec</span><span class="o">.</span><span class="n">loader</span><span class="o">.</span><span class="n">exec_module</span><span class="p">(</span><span class="n">module</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">module</span>
+
+
+<span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span><span class="p">(</span><span class="n">scope</span><span class="o">=</span><span class="s2">&quot;session&quot;</span><span class="p">,</span> <span class="n">autouse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">catalogue</span><span class="p">(</span><span class="n">tmp_path_factory</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">tmp_path_factory</span><span class="o">.</span><span class="n">mktemp</span><span class="p">(</span><span class="s2">&quot;catalogue&quot;</span><span class="p">)</span> <span class="o">/</span> <span class="s2">&quot;ledger.db&quot;</span>
+    <span class="n">_load_generator</span><span class="p">()</span><span class="o">.</span><span class="n">build</span><span class="p">(</span><span class="s2">&quot;small&quot;</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;LEDGER_DB&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">path</span>
+
+
+<span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">client</span><span class="p">():</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">fastmcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">Client</span>
+
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ledger.server</span><span class="w"> </span><span class="kn">import</span> <span class="n">mcp</span>
+
+    <span class="k">return</span> <span class="n">Client</span><span class="p">(</span><span class="n">mcp</span><span class="p">)</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Two things are doing real work here. The client is constructed against the server object
+directly, so there is no subprocess and no socket — the whole round trip happens in memory,
+which is why the suite finishes in under two seconds. And the catalogue is regenerated into
+a temporary directory for every run, with <code>LEDGER_DB</code> pointed at it, so a test
+run never depends on or disturbs whatever the reader has in <code>data/generated/</code>.</p>
+
+<p>Deterministic fixtures matter more here than in ordinary testing. Several assertions
+later in this book are about <em>sizes</em> — how many rows, how many tokens — and a
+fixture that varies makes those assertions meaningless.</p>
+
+<h2 id="contract-tests-the-surface-itself">Contract tests: the surface itself<a class="anchor" href="#contract-tests-the-surface-itself" aria-label="Link to this section">#</a></h2>
+
+<p>Before testing what tools do, test what tools exist.</p>
+
+<!-- include: code/ledger/tests/test_tools.py lang=python region=surface -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/tests/test_tools.py</span><span>region surface</span></figcaption>
+<pre class="highlight"><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_tool_surface_is_what_we_think_it_is</span><span class="p">(</span><span class="n">client</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">client</span><span class="p">:</span>
+        <span class="n">tools</span> <span class="o">=</span> <span class="p">{</span><span class="n">t</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">list_tools</span><span class="p">()}</span>
+    <span class="k">assert</span> <span class="n">tools</span> <span class="o">==</span> <span class="n">EXPECTED_TOOLS</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>This looks trivial and catches a specific, real failure. <code>ledger</code> registers
+its primitives by importing modules for their side effects; a missing import in
+<code>server.py</code> silently removes a tool. Nothing raises. The server starts, works,
+and quietly no longer does one of the things it advertises.</p>
+
+<p>The same test also makes tool removal a deliberate act. Once your server has users, the
+tool surface is a published contract — deleting a tool breaks agents in the wild, and it
+should require editing a test that says so out loud. Chapter 24 is about doing that
+gracefully.</p>
+
+<h2 id="contract-tests-quality-you-can-assert">Contract tests: quality you can assert<a class="anchor" href="#contract-tests-quality-you-can-assert" aria-label="Link to this section">#</a></h2>
+
+<p>Some of what chapter 4 argued can simply be enforced.</p>
+
+<!-- include: code/ledger/tests/test_tools.py lang=python region=documents_itself -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/tests/test_tools.py</span><span>region documents_itself</span></figcaption>
+<pre class="highlight"><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_every_tool_documents_itself</span><span class="p">(</span><span class="n">client</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A tool with no description is a tool the model will misuse. Chapter 9</span>
+<span class="sd">    argues this at length; here it is simply enforced.&quot;&quot;&quot;</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">client</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">tool</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">list_tools</span><span class="p">():</span>
+            <span class="k">assert</span> <span class="n">tool</span><span class="o">.</span><span class="n">description</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">tool</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> has no description&quot;</span>
+            <span class="n">properties</span> <span class="o">=</span> <span class="n">tool</span><span class="o">.</span><span class="n">input_schema</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;properties&quot;</span><span class="p">,</span> <span class="p">{})</span>
+            <span class="k">assert</span> <span class="n">properties</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">tool</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> exposes no parameters&quot;</span>
+            <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">schema</span> <span class="ow">in</span> <span class="n">properties</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">assert</span> <span class="n">schema</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;description&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">tool</span><span class="o">.</span><span class="n">description</span><span class="p">,</span> <span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">tool</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> is undocumented&quot;</span>
+                <span class="p">)</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>A tool with no description is a tool the model will misuse. A parameter with no
+description is a parameter it will guess at. These are not stylistic preferences; they are
+the difference between a tool being chosen correctly and being chosen at random, and they
+are trivially checkable.</p>
+
+<p><code>ledger</code> asserts the same way that every tool carries read-only annotations.
+When a writing tool arrives, that test fails, and failing is correct — someone should have
+to think about it.</p>
+
+<p>This class of test scales further than people expect. Token budgets per tool description,
+naming conventions, required error-message shapes, a cap on the total size of
+<code>tools/list</code> — all of them are assertions. Chapter 8 turns the size one into a
+number.</p>
+
+<h2 id="behaviour-and-the-messages-that-go-with-it">Behaviour, and the messages that go with it<a class="anchor" href="#behaviour-and-the-messages-that-go-with-it" aria-label="Link to this section">#</a></h2>
+
+<p>Ordinary behaviour tests look ordinary:</p>
+
+<pre class="highlight"><code>async def test_find_licences_filters_by_territory(client):
+    row = db.one(
+        "SELECT title_id, territory FROM licences GROUP BY title_id HAVING COUNT(*) &gt; 3"
+    )
+    async with client:
+        result = await client.call_tool(
+            "find_licences",
+            {"title_id": row["title_id"], "territory": row["territory"]},
+        )
+    assert result.data
+    assert {r["territory"] for r in result.data} == {row["territory"]}</code></pre>
+
+<p>Note that the test derives its inputs from the fixture rather than hard-coding
+identifiers. Hard-coded ids rot the first time the generator changes; a query that asks for
+"a title with more than three licences" keeps meaning what it meant.</p>
+
+<p>The less ordinary tests are the ones about error text:</p>
+
+<pre class="highlight"><code>with pytest.raises(ToolError, match="search_titles"):
+    await client.call_tool("get_title", {"title_id": "T-nope"})</code></pre>
+
+<p>That assertion is not about the string. It is about the error naming a recovery. Chapter
+4 argued that failure text is a message to the model; this is how you stop that argument
+decaying into <code>Invalid input</code> six months later.</p>
+
+<h2 id="pinning-what-is-deliberately-wrong">Pinning what is deliberately wrong<a class="anchor" href="#pinning-what-is-deliberately-wrong" aria-label="Link to this section">#</a></h2>
+
+<p><code>find_licences</code> returns every row it finds, with no limit and no total. That
+is a flaw, it is on purpose, and chapter 8 needs it to still be there.</p>
+
+<pre class="highlight"><code>async def test_find_licences_returns_everything_it_finds(client):
+    """Deliberately unbounded. When this test starts failing, it is because
+    chapter 10 has landed — update it there, not before."""</code></pre>
+
+<p>This is an unusual test to write and a useful habit to have. A known limitation with a
+test on it is a documented decision. A known limitation with nothing on it is something
+that will be helpfully fixed by a contributor who does not know why it is there, and the
+fix will silently invalidate a measurement three chapters later.</p>
+
+<h2 id="the-packaging-test">The packaging test<a class="anchor" href="#the-packaging-test" aria-label="Link to this section">#</a></h2>
+
+<p>Everything above talks to the server in-process, which proves the logic and nothing about
+whether it starts. One test spawns it as a real subprocess over stdio:</p>
+
+<!-- include: code/ledger/tests/test_entrypoint.py lang=python -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/tests/test_entrypoint.py</span><span></span></figcaption>
+<pre class="highlight"><code><span class="sd">&quot;&quot;&quot;The server actually starts as a process and speaks MCP over stdio.</span>
+
+<span class="sd">Everything else in the suite talks to the server in-process, which is fast and</span>
+<span class="sd">proves the logic but not the packaging. This one spawns it the way a client</span>
+<span class="sd">would, so a broken entry point fails here rather than in a reader&#39;s editor.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">fastmcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">Client</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">fastmcp.client.transports</span><span class="w"> </span><span class="kn">import</span> <span class="n">StdioTransport</span>
+
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_server_starts_and_lists_its_tools</span><span class="p">(</span><span class="n">catalogue</span><span class="p">):</span>
+    <span class="n">transport</span> <span class="o">=</span> <span class="n">StdioTransport</span><span class="p">(</span>
+        <span class="n">command</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span>
+        <span class="n">args</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;-m&quot;</span><span class="p">,</span> <span class="s2">&quot;ledger&quot;</span><span class="p">],</span>
+        <span class="n">env</span><span class="o">=</span><span class="p">{</span><span class="o">**</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">,</span> <span class="s2">&quot;LEDGER_DB&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">catalogue</span><span class="p">)},</span>
+    <span class="p">)</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">Client</span><span class="p">(</span><span class="n">transport</span><span class="p">)</span> <span class="k">as</span> <span class="n">client</span><span class="p">:</span>
+        <span class="n">tools</span> <span class="o">=</span> <span class="p">{</span><span class="n">t</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">list_tools</span><span class="p">()}</span>
+    <span class="k">assert</span> <span class="s2">&quot;search_titles&quot;</span> <span class="ow">in</span> <span class="n">tools</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>It is the slowest test in the suite by an order of magnitude and it is worth every
+millisecond, because it fails on things nothing else can see: a broken console script, an
+import that only works from the project root, a dependency missing from
+<code>pyproject.toml</code> that happens to be installed in your environment. Those failures
+otherwise surface in a reader's editor, as a server that does not appear.</p>
+
+<h2 id="golden-transcripts">Golden transcripts<a class="anchor" href="#golden-transcripts" aria-label="Link to this section">#</a></h2>
+
+<p>There is one more form of test in this repository and it does not look like a test.
+<code>code/labs/wire/capture.sh</code> sends a request per method and commits the responses.
+Re-run it after any change and read the diff.</p>
+
+<p>Two chapters ago that diff did real work: adding a <code>Literal</code> to one parameter
+changed 35 lines of captured JSON, and the schema the model sees changed with it. No
+assertion would have told you as much as looking at it.</p>
+
+<p>Use golden files where the interesting question is <em>what does this look like now</em>
+rather than <em>is this still true</em>. Schemas, error shapes and protocol envelopes all
+qualify. Keep them in version control and read the diffs; a golden file nobody reads is
+just a slow way to accept any change.</p>
+
+<h2 id="what-none-of-this-tests">What none of this tests<a class="anchor" href="#what-none-of-this-tests" aria-label="Link to this section">#</a></h2>
+
+<p>Whether a model can actually use your server.</p>
+
+<p>Every test here is about correctness and contract. None of them tells you that a model
+picks <code>search_titles</code> before <code>get_title</code>, or that it narrows by
+territory instead of asking for all 180 licences, or that it recovers from an error the way
+the message intended. Those are real questions and they need a model to answer.</p>
+
+<p>They are also expensive, slow and noisy, which is why they belong in a separate suite run
+deliberately rather than on every commit. Chapter 25 builds that suite: task-level
+evaluations with a regression harness and cost budgets. The division of labour is the
+point — everything checkable without a model should be checked without one, so that the
+expensive suite is small enough to actually run.</p>
+
+<h2 id="checkpoint">Checkpoint<a class="anchor" href="#checkpoint" aria-label="Link to this section">#</a></h2>
+
+<p>Part 1 is done. <code>ledger</code> has tools, resources and prompts, it runs on both
+transports, and twenty-four tests hold it in place in under two seconds.</p>
+
+<p>It is also, measured honestly, a server that will fail the first time someone asks it a
+reasonable question about a popular title. Part 2 changes point of view — from what your
+server does to what it costs — and it starts by putting a number on that failure.</p>
+
+<!-- END:body -->
+<!-- BEGIN:pager -->
+<nav class="pager" aria-label="Chapter">
+<a class="prev" href="ch06-prompts.html"><span class="dir">Previous</span><span class="name">6. Prompts</span></a>
+<span class="spacer"></span>
+</nav>
+<!-- END:pager -->
+</main>
+</div>
+</body>
+</html>

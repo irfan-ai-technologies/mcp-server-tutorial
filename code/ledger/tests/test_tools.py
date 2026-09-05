@@ -14,12 +14,17 @@ from ledger import db
 EXPECTED_TOOLS = {"search_titles", "get_title", "find_licences", "licence_detail"}
 
 
+# region: surface
 async def test_tool_surface_is_what_we_think_it_is(client):
     async with client:
         tools = {t.name for t in await client.list_tools()}
     assert tools == EXPECTED_TOOLS
 
 
+# endregion: surface
+
+
+# region: documents_itself
 async def test_every_tool_documents_itself(client):
     """A tool with no description is a tool the model will misuse. Chapter 9
     argues this at length; here it is simply enforced."""
@@ -32,6 +37,7 @@ async def test_every_tool_documents_itself(client):
                 assert schema.get("description") or tool.description, (
                     f"{tool.name}.{name} is undocumented"
                 )
+# endregion: documents_itself
 
 
 async def test_search_finds_a_title(client):

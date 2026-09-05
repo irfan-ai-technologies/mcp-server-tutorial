@@ -66,7 +66,7 @@
           "slug": "ch07-testing-without-an-llm",
           "title": "Testing without an LLM",
           "standfirst": "In-process client, golden transcripts, contract tests over the tool surface. Everything after this depends on it.",
-          "status": "planned",
+          "status": "draft",
           "tag": "ch07-testing"
         }
       ]
