@@ -42,7 +42,7 @@
           "slug": "ch04-tools",
           "title": "Tools",
           "standfirst": "Signatures, JSON Schema 2020-12, structured content, annotations, and errors written for a model rather than a human.",
-          "status": "planned",
+          "status": "draft",
           "tag": "ch04-tools"
         },
         {

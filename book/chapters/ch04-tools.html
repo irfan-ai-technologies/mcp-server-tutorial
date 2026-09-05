@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- BEGIN:title --><title>4. Tools &mdash; MCP Servers: Zero to Hero</title><!-- END:title -->
+<link rel="stylesheet" href="../assets/book.css">
+<script src="../assets/book.js" defer></script>
+</head>
+<body>
+<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme">◐</button>
+<div class="shell">
+<nav class="sidebar" aria-label="Contents">
+<!-- BEGIN:sidebar -->
+<a class="brand" href="../index.html">MCP Servers: Zero to Hero</a>
+<p class="part">Part 0 — Orientation</p>
+<ol>
+<li><a href="ch01-what-mcp-actually-is.html"><span class="num">1</span>What MCP actually is</a></li>
+<li><a href="ch02-the-protocol-in-one-chapter.html"><span class="num">2</span>The protocol in one chapter</a></li>
+</ol>
+<p class="part">Part 1 — Zero: a server that works</p>
+<ol>
+<li><a href="ch03-first-server.html"><span class="num">3</span>First server</a></li>
+<li><a href="ch04-tools.html" aria-current="page"><span class="num">4</span>Tools</a></li>
+<li><a aria-disabled="true"><span class="num">5</span>Resources and templates</a></li>
+<li><a aria-disabled="true"><span class="num">6</span>Prompts</a></li>
+<li><a aria-disabled="true"><span class="num">7</span>Testing without an LLM</a></li>
+</ol>
+<p class="part">Part 2 — The client&#x27;s point of view</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">8</span>What the model actually sees</a></li>
+<li><a aria-disabled="true"><span class="num">9</span>Tool design is prompt engineering</a></li>
+<li><a aria-disabled="true"><span class="num">10</span>Result shaping</a></li>
+</ol>
+<p class="part">Part 3 — Scale</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">11</span>Going HTTP</a></li>
+<li><a aria-disabled="true"><span class="num">12</span>Life after sessions</a></li>
+<li><a aria-disabled="true"><span class="num">13</span>Failure</a></li>
+<li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
+<li><a aria-disabled="true"><span class="num">15</span>Long-running work</a></li>
+<li><a aria-disabled="true"><span class="num">16</span>Observability</a></li>
+<li><a aria-disabled="true"><span class="num">17</span>Identity and multi-tenancy</a></li>
+<li><a aria-disabled="true"><span class="num">18</span>Security</a></li>
+</ol>
+<p class="part">Part 4 — The context problem</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">19</span>Progressive disclosure I: shrink the surface</a></li>
+<li><a aria-disabled="true"><span class="num">20</span>Progressive disclosure II: search then load</a></li>
+<li><a aria-disabled="true"><span class="num">21</span>Progressive disclosure III: resources as the channel</a></li>
+<li><a aria-disabled="true"><span class="num">22</span>jq as a tool</a></li>
+<li><a aria-disabled="true"><span class="num">23</span>Code mode</a></li>
+</ol>
+<p class="part">Part 5 — Shipping</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">24</span>Packaging and distribution</a></li>
+<li><a aria-disabled="true"><span class="num">25</span>Evaluating a server</a></li>
+<li><a aria-disabled="true"><span class="num">26</span>Anti-patterns and a review checklist</a></li>
+</ol>
+<p class="part">Appendices</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">A</span>The same server without FastMCP</a></li>
+<li><a aria-disabled="true"><span class="num">B</span>Migrating 2025-11-25 to 2026-07-28</a></li>
+<li><a aria-disabled="true"><span class="num">C</span>jq cookbook for agent tool results</a></li>
+<li><a aria-disabled="true"><span class="num">D</span>Glossary</a></li>
+</ol>
+<!-- END:sidebar -->
+</nav>
+<main class="content">
+<header class="chapter-head">
+<!-- BEGIN:head -->
+<p class="eyebrow">Part 1 — Zero: a server that works &middot; Chapter 4</p>
+<h1>Tools</h1>
+<p class="standfirst">Signatures, JSON Schema 2020-12, structured content, annotations, and errors written for a model rather than a human.</p>
+<div class="chapter-meta"><span><b>Status</b> <span class="status status-draft">draft</span></span><span><b>Protocol</b> <code>2026-07-28</code></span><span><b>Code</b> <code>git checkout ch04-tools</code></span></div>
+<!-- END:head -->
+</header>
+<!-- BEGIN:body -->
+<p>A tool definition is a prompt fragment with a function attached. Everything in this
+chapter follows from taking that literally.</p>
+
+<p>The model does not run your tool and observe the result the way a developer does. It
+reads a name, a sentence, a few parameter descriptions and a schema, decides whether this
+is the right tool for what the user asked, guesses at arguments, and finds out whether it
+guessed right by being wrong. Your job is to make the guess easy.</p>
+
+<h2 id="the-name-is-the-first-sentence">The name is the first sentence<a class="anchor" href="#the-name-is-the-first-sentence" aria-label="Link to this section">#</a></h2>
+
+<p>Tool names are read together, as a set, before any description is considered carefully.
+<code>search_titles</code>, <code>get_title</code>, <code>find_licences</code>,
+<code>licence_detail</code> — that set tells you the shape of the domain before you read a
+word of prose.</p>
+
+<p>Two failure modes are common. The first is names that overlap:
+<code>get_licence</code> and <code>fetch_licence_info</code> in the same server will be
+chosen between at random, and no amount of description fixes it. The second is names that
+describe your implementation rather than the user's intent —
+<code>query_licence_view_v2</code> is honest about your database and useless to a model.</p>
+
+<p>Verb-first, domain nouns, and distinct at a glance. If two tools need a paragraph to
+tell apart, they should probably be one tool with a parameter.</p>
+
+<h2 id="the-first-line-of-the-docstring-is-the-whole-description">The first line of the docstring is the whole description<a class="anchor" href="#the-first-line-of-the-docstring-is-the-whole-description" aria-label="Link to this section">#</a></h2>
+
+<p>FastMCP takes the first line as the tool description and lifts <code>Args:</code>
+entries into per-parameter descriptions. Everything below the first line and outside
+<code>Args:</code> is invisible.</p>
+
+<!-- include: code/ledger/src/ledger/tools.py lang=python region=find_licences -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/tools.py</span><span>region find_licences</span></figcaption>
+<pre class="highlight"><code><span class="nd">@mcp</span><span class="o">.</span><span class="n">tool</span><span class="p">(</span><span class="n">annotations</span><span class="o">=</span><span class="n">READ_ONLY</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">find_licences</span><span class="p">(</span>
+    <span class="n">title_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">territory</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">status</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;active&quot;</span><span class="p">,</span> <span class="s2">&quot;expired&quot;</span><span class="p">,</span> <span class="s2">&quot;pending&quot;</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Licences attached to a title.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        title_id: a title identifier such as T-1042.</span>
+<span class="sd">        territory: ISO 3166-1 alpha-2 code, e.g. GB. Omit for every territory.</span>
+<span class="sd">        status: active, expired or pending. Omit for all three.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># No limit, and no total. A handful of titles carry 180 licences, and asking</span>
+    <span class="c1"># about one of them returns every row. Chapter 8 prices that; chapter 10</span>
+    <span class="c1"># fixes it. Leaving it naive here is the point.</span>
+    <span class="k">return</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        SELECT l.id, l.territory, l.rights, l.exclusive,</span>
+<span class="sd">               l.window_start, l.window_end, l.status,</span>
+<span class="sd">               e.name AS licensee, l.agreement_id</span>
+<span class="sd">        FROM licences l</span>
+<span class="sd">        JOIN licensees e ON e.id = l.licensee_id</span>
+<span class="sd">        WHERE l.title_id = :title_id</span>
+<span class="sd">          AND (:territory IS NULL OR l.territory = :territory)</span>
+<span class="sd">          AND (:status IS NULL OR l.status = :status)</span>
+<span class="sd">        ORDER BY l.window_start DESC, l.id</span>
+<span class="sd">        &quot;&quot;&quot;</span><span class="p">,</span>
+        <span class="n">title_id</span><span class="o">=</span><span class="n">title_id</span><span class="p">,</span>
+        <span class="n">territory</span><span class="o">=</span><span class="n">territory</span><span class="p">,</span>
+        <span class="n">status</span><span class="o">=</span><span class="n">status</span><span class="p">,</span>
+    <span class="p">)</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Which arrives at the model like this:</p>
+
+<!-- include: code/labs/wire/transcripts/tools-list.one-tool.json title=find_licences_as_the_model_sees_it -->
+<figure class="snippet">
+<figcaption><span class="path">find licences as the model sees it</span><span></span></figcaption>
+<pre class="highlight"><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;_meta&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;fastmcp&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;tags&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;annotations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;destructiveHint&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;idempotentHint&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;readOnlyHint&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Licences attached to a title.&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;inputSchema&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;title_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a title identifier such as T-1042.&quot;</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">&quot;territory&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;anyOf&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">          </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;null&quot;</span>
+<span class="w">          </span><span class="p">}</span>
+<span class="w">        </span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ISO 3166-1 alpha-2 code, e.g. GB. Omit for every territory.&quot;</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;anyOf&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">          </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;enum&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">              </span><span class="s2">&quot;active&quot;</span><span class="p">,</span>
+<span class="w">              </span><span class="s2">&quot;expired&quot;</span><span class="p">,</span>
+<span class="w">              </span><span class="s2">&quot;pending&quot;</span>
+<span class="w">            </span><span class="p">],</span>
+<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;null&quot;</span>
+<span class="w">          </span><span class="p">}</span>
+<span class="w">        </span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;active, expired or pending. Omit for all three.&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">&quot;title_id&quot;</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;additionalProperties&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;find_licences&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;outputSchema&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;result&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;items&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;additionalProperties&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span>
+<span class="w">        </span><span class="p">},</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;array&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">&quot;result&quot;</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;x-fastmcp-wrap-result&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Find Licences&quot;</span>
+<span class="p">}</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>The comment about chapters 8 and 10 is not in there. Neither is anything about how the
+query is built. What is there is a sentence, three parameter descriptions, and a schema —
+about 190 tokens, permanently, whether or not this tool is ever called.</p>
+
+<p>Write the first line as an answer to <em>when should I use this?</em>, not <em>what does
+this do?</em> "Licences attached to a title" is adequate. "Licences attached to a title —
+use after search_titles, and narrow by territory when you only need one market" is better,
+and costs eight tokens.</p>
+
+<h2 id="let-the-schema-do-the-validating">Let the schema do the validating<a class="anchor" href="#let-the-schema-do-the-validating" aria-label="Link to this section">#</a></h2>
+
+<p>The <code>status</code> parameter above is a <code>Literal</code>, and that one change
+does three things a runtime check cannot.</p>
+
+<p>The allowed values appear in the schema, so the model knows them before calling rather
+than discovering them by failing. The client can reject a bad value without a round trip.
+And the tool body loses a branch — there is no longer any code in
+<code>find_licences</code> that handles a status it does not recognise, because one cannot
+arrive.</p>
+
+<p>The general rule: anything that can be expressed as a type should be. Enumerations,
+optionality, integer bounds, string formats, required-versus-optional. The revision loosened
+this deliberately.</p>
+
+<div class="callout spec">
+<span class="label">Specification 2026-07-28</span>
+<p><code>inputSchema</code> and <code>outputSchema</code> now allow any JSON Schema 2020-12
+keywords, and <code>structuredContent</code> allows any JSON value, with defined
+<code>$ref</code> resolution and bounds on composition keywords. You are no longer confined
+to a subset.</p>
+</div>
+
+<p>Being able to express a constraint is not the same as it being worth expressing. A schema
+so precise that the model cannot construct a valid call is worse than a loose one — chapter
+9 is about that trade-off. Start with types you already have and tighten where the model
+actually gets it wrong.</p>
+
+<h2 id="what-comes-back">What comes back<a class="anchor" href="#what-comes-back" aria-label="Link to this section">#</a></h2>
+
+<p>A result carries <code>content</code> — blocks of text, images or embedded resources —
+and <code>structuredContent</code>, the same data as JSON. Return a typed value from a
+Python function and FastMCP produces both, plus an <code>outputSchema</code>.</p>
+
+<p>There is a wrinkle. JSON Schema wants an object at the top level, so a tool returning a
+list gets wrapped:</p>
+
+<pre class="highlight"><code>"outputSchema": {
+  "properties": {"result": {"items": {...}, "type": "array"}},
+  "required": ["result"],
+  "x-fastmcp-wrap-result": true
+}</code></pre>
+
+<p>Your <code>list[dict]</code> is <code>{"result": [...]}</code> on the wire. Worth knowing
+before you write a client, and worth knowing before you assume the shape a model sees is the
+shape you returned.</p>
+
+<p>The deeper question — how much should come back at all — is chapter 10's, and
+<code>find_licences</code> is deliberately wrong about it until then. It returns every row
+it finds, with no total and no limit. For the title with 180 licences, that is every one of
+them.</p>
+
+<h2 id="errors-are-messages-to-a-model">Errors are messages to a model<a class="anchor" href="#errors-are-messages-to-a-model" aria-label="Link to this section">#</a></h2>
+
+<p>Chapter 2 showed that a failed tool is a <em>successful</em> JSON-RPC response carrying
+<code>isError: true</code>. The distinction is not pedantry: it means the failure text goes
+to the model, in the conversation, as something to act on.</p>
+
+<p>So write it that way.</p>
+
+<div class="table-scroll">
+<table>
+<thead><tr><th>Instead of</th><th>Write</th><th>Because</th></tr></thead>
+<tbody>
+<tr><td><code>KeyError: 'T-nope'</code></td><td>no title 'T-nope'; use search_titles to find one</td><td>Names the recovery</td></tr>
+<tr><td>Invalid input</td><td>query is empty; pass one or more words from the title name</td><td>Says which input and what a good one looks like</td></tr>
+<tr><td>Too many results</td><td>4,182 licences match; narrow by territory or status</td><td>Gives the number and the lever</td></tr>
+<tr><td>Unauthorised</td><td>this key cannot read royalty data; licence and title tools are available</td><td>Stops the model retrying the same wall</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>The test is whether a competent colleague who cannot see your code could act on the
+message. If they would have to ask a follow-up question, the model will guess instead.</p>
+
+<p>Reserve exceptions that are not <code>ToolError</code> for things the model genuinely
+cannot fix — a database that is down, a bug in your code. Those should be protocol-level
+failures and should page you, not be politely explained to a language model.</p>
+
+<h2 id="annotations">Annotations<a class="anchor" href="#annotations" aria-label="Link to this section">#</a></h2>
+
+<p>Every tool in <code>ledger</code> carries the same three hints:</p>
+
+<pre class="highlight"><code>READ_ONLY = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}</code></pre>
+
+<p>These are how a client decides what it may run without asking a human. A read-only,
+idempotent, non-destructive tool can be retried, run in parallel, and called without a
+confirmation dialog. A tool that lacks the hints gets treated conservatively, which usually
+means a prompt in front of the user every single time.</p>
+
+<p>They are hints, not enforcement — nothing stops a lying server. Treat them as a contract
+you keep, and note that "idempotent" is a promise about your <em>system</em>, not your
+function. Chapter 13 comes back to this when retries stop being hypothetical.</p>
+
+<h2 id="what-should-not-be-a-tool">What should not be a tool<a class="anchor" href="#what-should-not-be-a-tool" aria-label="Link to this section">#</a></h2>
+
+<p>Three things get made into tools that should not be.</p>
+
+<p><strong>A thing the client already knows.</strong> If the application can put it in
+context without asking, it is a resource. Chapter 5.</p>
+
+<p><strong>A procedure the user invokes deliberately.</strong> "Run the quarterly clearance
+review" is a prompt, not a tool. Chapter 6.</p>
+
+<p><strong>Every endpoint you happen to have.</strong> The most expensive mistake in MCP is
+generating one tool per REST route. Forty tools nobody uses is forty tools every
+conversation pays for, and a model that has to read all of them to choose one. Parts 2 and 4
+are largely about digging out of this, and not doing it is much cheaper.</p>
+
+<h2 id="checkpoint">Checkpoint<a class="anchor" href="#checkpoint" aria-label="Link to this section">#</a></h2>
+
+<p><code>ledger</code> has four tools, each with a description written for a model, a schema
+that rejects bad input before the body runs, errors that name a recovery, and annotations
+that tell a client what it is safe to do. It is also still returning 180 rows when asked
+nicely, which is the subject of chapter 10.</p>
+<!-- END:body -->
+<!-- BEGIN:pager -->
+<nav class="pager" aria-label="Chapter">
+<a class="prev" href="ch03-first-server.html"><span class="dir">Previous</span><span class="name">3. First server</span></a>
+<span class="spacer"></span>
+</nav>
+<!-- END:pager -->
+</main>
+</div>
+</body>
+</html>
