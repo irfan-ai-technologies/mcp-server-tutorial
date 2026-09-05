@@ -34,7 +34,7 @@
           "slug": "ch03-first-server",
           "title": "First server",
           "standfirst": "ledger v0 over stdio, the Inspector, and the shortest useful feedback loop.",
-          "status": "planned",
+          "status": "draft",
           "tag": "ch03-first-server"
         },
         {

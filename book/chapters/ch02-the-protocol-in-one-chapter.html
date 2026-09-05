@@ -20,7 +20,7 @@
 </ol>
 <p class="part">Part 1 — Zero: a server that works</p>
 <ol>
-<li><a aria-disabled="true"><span class="num">3</span>First server</a></li>
+<li><a href="ch03-first-server.html"><span class="num">3</span>First server</a></li>
 <li><a aria-disabled="true"><span class="num">4</span>Tools</a></li>
 <li><a aria-disabled="true"><span class="num">5</span>Resources and templates</a></li>
 <li><a aria-disabled="true"><span class="num">6</span>Prompts</a></li>
@@ -156,6 +156,11 @@ the captured response by the capture script rather than retyped:</p>
 <span class="w">      </span><span class="nt">&quot;tags&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;annotations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;destructiveHint&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;idempotentHint&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;readOnlyHint&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Licences attached to a title.&quot;</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;inputSchema&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -178,6 +183,11 @@ the captured response by the capture script rather than retyped:</p>
 <span class="w">      </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nt">&quot;anyOf&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">          </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;enum&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">              </span><span class="s2">&quot;active&quot;</span><span class="p">,</span>
+<span class="w">              </span><span class="s2">&quot;expired&quot;</span><span class="p">,</span>
+<span class="w">              </span><span class="s2">&quot;pending&quot;</span>
+<span class="w">            </span><span class="p">],</span>
 <span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
 <span class="w">          </span><span class="p">},</span>
 <span class="w">          </span><span class="p">{</span>
@@ -461,7 +471,7 @@ later chapter concrete.</p>
 <!-- BEGIN:pager -->
 <nav class="pager" aria-label="Chapter">
 <a class="prev" href="ch01-what-mcp-actually-is.html"><span class="dir">Previous</span><span class="name">1. What MCP actually is</span></a>
-<span class="spacer"></span>
+<a class="next" href="ch03-first-server.html"><span class="dir">Next</span><span class="name">3. First server</span></a>
 </nav>
 <!-- END:pager -->
 </main>

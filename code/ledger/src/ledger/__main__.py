@@ -17,6 +17,7 @@ from ledger.server import mcp
 DEFAULT_PORT = 8000
 
 
+# region: http_app
 def http_app(stateless: bool = True):
     """The ASGI app, built explicitly rather than through `mcp.run()`.
 
@@ -35,6 +36,7 @@ def http_app(stateless: bool = True):
     opt-out actually took effect.
     """
     return mcp.http_app(stateless_http=stateless)
+# endregion: http_app
 
 
 def main() -> None:

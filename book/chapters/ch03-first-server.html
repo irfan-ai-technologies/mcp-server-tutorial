@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- BEGIN:title --><title>3. First server &mdash; MCP Servers: Zero to Hero</title><!-- END:title -->
+<link rel="stylesheet" href="../assets/book.css">
+<script src="../assets/book.js" defer></script>
+</head>
+<body>
+<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme">◐</button>
+<div class="shell">
+<nav class="sidebar" aria-label="Contents">
+<!-- BEGIN:sidebar -->
+<a class="brand" href="../index.html">MCP Servers: Zero to Hero</a>
+<p class="part">Part 0 — Orientation</p>
+<ol>
+<li><a href="ch01-what-mcp-actually-is.html"><span class="num">1</span>What MCP actually is</a></li>
+<li><a href="ch02-the-protocol-in-one-chapter.html"><span class="num">2</span>The protocol in one chapter</a></li>
+</ol>
+<p class="part">Part 1 — Zero: a server that works</p>
+<ol>
+<li><a href="ch03-first-server.html" aria-current="page"><span class="num">3</span>First server</a></li>
+<li><a aria-disabled="true"><span class="num">4</span>Tools</a></li>
+<li><a aria-disabled="true"><span class="num">5</span>Resources and templates</a></li>
+<li><a aria-disabled="true"><span class="num">6</span>Prompts</a></li>
+<li><a aria-disabled="true"><span class="num">7</span>Testing without an LLM</a></li>
+</ol>
+<p class="part">Part 2 — The client&#x27;s point of view</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">8</span>What the model actually sees</a></li>
+<li><a aria-disabled="true"><span class="num">9</span>Tool design is prompt engineering</a></li>
+<li><a aria-disabled="true"><span class="num">10</span>Result shaping</a></li>
+</ol>
+<p class="part">Part 3 — Scale</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">11</span>Going HTTP</a></li>
+<li><a aria-disabled="true"><span class="num">12</span>Life after sessions</a></li>
+<li><a aria-disabled="true"><span class="num">13</span>Failure</a></li>
+<li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
+<li><a aria-disabled="true"><span class="num">15</span>Long-running work</a></li>
+<li><a aria-disabled="true"><span class="num">16</span>Observability</a></li>
+<li><a aria-disabled="true"><span class="num">17</span>Identity and multi-tenancy</a></li>
+<li><a aria-disabled="true"><span class="num">18</span>Security</a></li>
+</ol>
+<p class="part">Part 4 — The context problem</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">19</span>Progressive disclosure I: shrink the surface</a></li>
+<li><a aria-disabled="true"><span class="num">20</span>Progressive disclosure II: search then load</a></li>
+<li><a aria-disabled="true"><span class="num">21</span>Progressive disclosure III: resources as the channel</a></li>
+<li><a aria-disabled="true"><span class="num">22</span>jq as a tool</a></li>
+<li><a aria-disabled="true"><span class="num">23</span>Code mode</a></li>
+</ol>
+<p class="part">Part 5 — Shipping</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">24</span>Packaging and distribution</a></li>
+<li><a aria-disabled="true"><span class="num">25</span>Evaluating a server</a></li>
+<li><a aria-disabled="true"><span class="num">26</span>Anti-patterns and a review checklist</a></li>
+</ol>
+<p class="part">Appendices</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">A</span>The same server without FastMCP</a></li>
+<li><a aria-disabled="true"><span class="num">B</span>Migrating 2025-11-25 to 2026-07-28</a></li>
+<li><a aria-disabled="true"><span class="num">C</span>jq cookbook for agent tool results</a></li>
+<li><a aria-disabled="true"><span class="num">D</span>Glossary</a></li>
+</ol>
+<!-- END:sidebar -->
+</nav>
+<main class="content">
+<header class="chapter-head">
+<!-- BEGIN:head -->
+<p class="eyebrow">Part 1 — Zero: a server that works &middot; Chapter 3</p>
+<h1>First server</h1>
+<p class="standfirst">ledger v0 over stdio, the Inspector, and the shortest useful feedback loop.</p>
+<div class="chapter-meta"><span><b>Status</b> <span class="status status-draft">draft</span></span><span><b>Protocol</b> <code>2026-07-28</code></span><span><b>Code</b> <code>git checkout ch03-first-server</code></span></div>
+<!-- END:head -->
+</header>
+<!-- BEGIN:body -->
+<p>The smallest useful MCP server is twelve lines. Here is all of it:</p>
+
+<!-- include: code/labs/hello/server.py lang=python -->
+<figure class="snippet">
+<figcaption><span class="path">code/labs/hello/server.py</span><span></span></figcaption>
+<pre class="highlight"><code><span class="ch">#!/usr/bin/env python3</span>
+<span class="c1"># /// script</span>
+<span class="c1"># requires-python = &quot;&gt;=3.11&quot;</span>
+<span class="c1"># dependencies = [&quot;fastmcp&gt;=4.0.3,&lt;5&quot;]</span>
+<span class="c1"># ///</span>
+<span class="sd">&quot;&quot;&quot;The smallest MCP server that is worth running.</span>
+
+<span class="sd">    uv run code/labs/hello/server.py</span>
+
+<span class="sd">Twelve lines of actual code. Everything else in this book is about what happens</span>
+<span class="sd">to those twelve lines when a second client shows up.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">fastmcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastMCP</span>
+
+<span class="n">mcp</span> <span class="o">=</span> <span class="n">FastMCP</span><span class="p">(</span><span class="s2">&quot;hello&quot;</span><span class="p">)</span>
+
+
+<span class="nd">@mcp</span><span class="o">.</span><span class="n">tool</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">days_between</span><span class="p">(</span><span class="n">start</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">end</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Whole days from start to end. Both dates are ISO 8601, e.g. 2026-07-28.&quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">date</span>
+
+    <span class="k">return</span> <span class="p">(</span><span class="n">date</span><span class="o">.</span><span class="n">fromisoformat</span><span class="p">(</span><span class="n">end</span><span class="p">)</span> <span class="o">-</span> <span class="n">date</span><span class="o">.</span><span class="n">fromisoformat</span><span class="p">(</span><span class="n">start</span><span class="p">))</span><span class="o">.</span><span class="n">days</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">mcp</span><span class="o">.</span><span class="n">run</span><span class="p">()</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Run it with <code>uv run code/labs/hello/server.py</code> and it speaks MCP over stdio.
+A client will spawn it exactly that way.</p>
+
+<p>The rest of this book is about what happens to those twelve lines when a second client
+shows up, when the result is large, when two calls need to know about each other, and when
+you have forty tools instead of one. But it is worth being clear that the starting point
+really is this small.</p>
+
+<h2 id="what-fastmcp-did-without-being-asked">What FastMCP did without being asked<a class="anchor" href="#what-fastmcp-did-without-being-asked" aria-label="Link to this section">#</a></h2>
+
+<p>The decorator turned a Python function into a tool definition. The parameter names and
+type hints became a JSON Schema. The first line of the docstring became the description.
+None of that is magic — chapter 2 showed you the JSON it produces — but it is worth
+knowing which parts of your source code are load-bearing:</p>
+
+<div class="table-scroll">
+<table>
+<thead><tr><th>In your code</th><th>On the wire</th><th>Read by</th></tr></thead>
+<tbody>
+<tr><td>Function name</td><td><code>name</code></td><td>The model, when choosing</td></tr>
+<tr><td>First docstring line</td><td><code>description</code></td><td>The model, when choosing</td></tr>
+<tr><td><code>Args:</code> entries</td><td>Per-parameter <code>description</code></td><td>The model, when filling in</td></tr>
+<tr><td>Type hints</td><td><code>inputSchema</code></td><td>The client, when validating</td></tr>
+<tr><td>Return annotation</td><td><code>outputSchema</code></td><td>The client, when parsing</td></tr>
+<tr><td>Everything else</td><td>Nothing</td><td>Nobody</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>That last row is the one to internalise. Your comments, your variable names, your careful
+internal abstractions — none of it reaches the model. If a fact matters for using the tool
+correctly, it has to be in the name, the description, the parameter descriptions or the
+schema. There is nowhere else.</p>
+
+<div class="callout warn">
+<span class="label">The stdout trap</span>
+<p>On stdio, your server's standard output <em>is</em> the protocol stream. A stray
+<code>print()</code>, a library that logs to stdout, a progress bar — any of them corrupt
+the stream and the client sees a parse error rather than your message. Log to stderr, or
+better, use the logging module and leave stdout alone. This is the single most common way
+a first MCP server fails.</p>
+</div>
+
+<h2 id="from-twelve-lines-to-something-real">From twelve lines to something real<a class="anchor" href="#from-twelve-lines-to-something-real" aria-label="Link to this section">#</a></h2>
+
+<p><code>ledger</code> is the server this book builds. It sits over a synthetic media rights
+catalogue — titles, licensees, licences with territories and windows, and a corpus of
+nested agreements. Generate it once:</p>
+
+<pre class="term"><span class="prompt">$ </span>uv run data/generate.py
+data/generated/ledger.db  (full, 7.1 MB)
+  titles              1,200
+  licensees              64
+  agreements            470
+  licences           13,342
+  royalty_lines      60,235
+  widest title   T-1152 with 180 licences</pre>
+
+<p>That last line is not decoration. One title carrying 180 licences is what turns a
+correct tool into a context-window failure, and chapter 8 measures exactly what it costs.
+The dataset is generated deterministically from a seed, so your copy has the same numbers
+as the ones printed in this book.</p>
+
+<h2 id="the-instance-and-the-instructions-nobody-writes">The instance, and the instructions nobody writes<a class="anchor" href="#the-instance-and-the-instructions-nobody-writes" aria-label="Link to this section">#</a></h2>
+
+<!-- include: code/ledger/src/ledger/app.py lang=python -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/app.py</span><span></span></figcaption>
+<pre class="highlight"><code><span class="sd">&quot;&quot;&quot;The server object itself, and nothing else.</span>
+
+<span class="sd">Tools, resources and prompts live in their own modules and register themselves</span>
+<span class="sd">against this instance. Keeping the instance separate is what stops those modules</span>
+<span class="sd">importing each other in a circle.</span>
+
+<span class="sd">`instructions` is the one piece of free text a client shows the model before any</span>
+<span class="sd">tool is called. It is worth more than any single tool description: it is where</span>
+<span class="sd">the model learns what the words in this domain mean.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">fastmcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastMCP</span>
+
+<span class="n">mcp</span> <span class="o">=</span> <span class="n">FastMCP</span><span class="p">(</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;ledger&quot;</span><span class="p">,</span>
+    <span class="n">instructions</span><span class="o">=</span><span class="p">(</span>
+        <span class="s2">&quot;Rights catalogue for a media licensing operation.</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;A title is a film, series, documentary or short. A licence grants one &quot;</span>
+        <span class="s2">&quot;licensee a named right (svod, avod, theatrical, inflight and so on) in &quot;</span>
+        <span class="s2">&quot;one territory, for a window of time, under an agreement. Agreements &quot;</span>
+        <span class="s2">&quot;nest: amendments hang off masters, side letters off amendments, and &quot;</span>
+        <span class="s2">&quot;the terms that apply are the ones nearest the leaf.</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;Start from search_titles; every other tool takes an identifier it &quot;</span>
+        <span class="s2">&quot;returns. Territories are ISO 3166-1 alpha-2 codes. Money is in minor &quot;</span>
+        <span class="s2">&quot;units.&quot;</span>
+    <span class="p">),</span>
+<span class="p">)</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Most servers pass a name and stop. The <code>instructions</code> block is worth more
+than any individual tool description, because it is the one place you can establish
+vocabulary. A model that does not know what "window" means in a licensing context will
+guess, and it will guess something reasonable and wrong.</p>
+
+<p>Write it for someone competent who has never seen your domain. Define the nouns, state
+the relationships, and say where to start. Three sentences of vocabulary will save you a
+dozen careful tool descriptions.</p>
+
+<h2 id="layout">Layout<a class="anchor" href="#layout" aria-label="Link to this section">#</a></h2>
+
+<p><code>ledger</code> splits by primitive: <code>app.py</code> holds the instance,
+<code>tools.py</code>, <code>resources.py</code> and <code>prompts.py</code> register
+against it, and <code>server.py</code> imports all three so there is exactly one place
+where the surface is known to be complete.</p>
+
+<p>That import-for-side-effects is worth naming rather than hiding. The modules do not
+export anything; importing them is what registers their contents. It avoids a circular
+import between the instance and the things that attach to it, and it means forgetting an
+import silently removes a tool — so <code>server.py</code> is the file to be careful with,
+and chapter 7 puts a test on exactly that.</p>
+
+<h2 id="a-tool-with-a-real-query-behind-it">A tool with a real query behind it<a class="anchor" href="#a-tool-with-a-real-query-behind-it" aria-label="Link to this section">#</a></h2>
+
+<!-- include: code/ledger/src/ledger/tools.py lang=python region=search_titles -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/tools.py</span><span>region search_titles</span></figcaption>
+<pre class="highlight"><code><span class="n">READ_ONLY</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;readOnlyHint&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;destructiveHint&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;idempotentHint&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+
+
+<span class="nd">@mcp</span><span class="o">.</span><span class="n">tool</span><span class="p">(</span><span class="n">annotations</span><span class="o">=</span><span class="n">READ_ONLY</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">search_titles</span><span class="p">(</span><span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">20</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Find titles by name. Use this first — every other tool takes a title_id.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        query: words from the title&#39;s name; matching is case-insensitive.</span>
+<span class="sd">        limit: maximum titles to return, 1-100.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">query</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="n">ToolError</span><span class="p">(</span><span class="s2">&quot;query is empty; pass one or more words from the title name&quot;</span><span class="p">)</span>
+    <span class="n">limit</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">limit</span><span class="p">,</span> <span class="mi">100</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        SELECT id, name, kind, release_year, original_language</span>
+<span class="sd">        FROM titles</span>
+<span class="sd">        WHERE name LIKE :pattern</span>
+<span class="sd">        ORDER BY release_year DESC, name</span>
+<span class="sd">        LIMIT :limit</span>
+<span class="sd">        &quot;&quot;&quot;</span><span class="p">,</span>
+        <span class="n">pattern</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;%</span><span class="si">{</span><span class="n">query</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="si">}</span><span class="s2">%&quot;</span><span class="p">,</span>
+        <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
+    <span class="p">)</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Three things here are deliberate and will come back later.</p>
+
+<p><strong>The description says where to start.</strong> "Use this first — every other tool
+takes a <code>title_id</code>" is orientation, not decoration. A model reading four tool
+descriptions has to work out the order of operations from them alone.</p>
+
+<p><strong>The limit is clamped, not trusted.</strong> A model that asks for ten thousand
+rows gets a hundred. This is the cheapest possible version of the discipline that chapter
+10 turns into a real policy, and it costs one line.</p>
+
+<p><strong>The error is written to be acted on.</strong> "query is empty; pass one or more
+words from the title name" tells the model what to do next. An exception traceback tells it
+that something went wrong, which it already knew.</p>
+
+<h2 id="running-it">Running it<a class="anchor" href="#running-it" aria-label="Link to this section">#</a></h2>
+
+<p>Over stdio, which is what a local client speaks:</p>
+
+<pre class="term"><span class="prompt">$ </span>cd code/ledger &amp;&amp; uv run ledger</pre>
+
+<p>Over HTTP, which is chapter 11's subject and available here as a flag:</p>
+
+<pre class="term"><span class="prompt">$ </span>uv run ledger --transport http --port 8000</pre>
+
+<p>There is one wrinkle behind that flag that is worth knowing now, because it is invisible
+until you send a request:</p>
+
+<!-- include: code/ledger/src/ledger/__main__.py lang=python region=http_app -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/__main__.py</span><span>region http_app</span></figcaption>
+<pre class="highlight"><code><span class="k">def</span><span class="w"> </span><span class="nf">http_app</span><span class="p">(</span><span class="n">stateless</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The ASGI app, built explicitly rather than through `mcp.run()`.</span>
+
+<span class="sd">    Two reasons, and the second one is a trap worth knowing about.</span>
+
+<span class="sd">    First, an HTTP server you intend to operate wants its own app: health</span>
+<span class="sd">    checks, middleware, and a place to mount things. Chapter 11 adds all three</span>
+<span class="sd">    here.</span>
+
+<span class="sd">    Second, `stateless_http` defaults to False in FastMCP 4.0.3 — the app still</span>
+<span class="sd">    expects the pre-2026-07-28 session handshake and rejects a plain request</span>
+<span class="sd">    with &quot;Missing session ID&quot;. Passing the flag through `mcp.run()` (as either</span>
+<span class="sd">    `stateless_http=` or `stateless=`) does not reach the app in that version;</span>
+<span class="sd">    passing it to `http_app()` does. The current protocol has no sessions at</span>
+<span class="sd">    all, so a server written against it must opt out, and must check that the</span>
+<span class="sd">    opt-out actually took effect.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">mcp</span><span class="o">.</span><span class="n">http_app</span><span class="p">(</span><span class="n">stateless_http</span><span class="o">=</span><span class="n">stateless</span><span class="p">)</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>FastMCP 4.0.3 defaults its HTTP app to the pre-2026-07-28 session handshake, and answers
+a plain request with <code>"Missing session ID"</code>. Passing the opt-out through
+<code>mcp.run()</code> does not reach the app; passing it to <code>http_app()</code> does.
+That is the kind of thing you find by sending a request, which is why chapter 2 sent one.</p>
+
+<h2 id="looking-at-it">Looking at it<a class="anchor" href="#looking-at-it" aria-label="Link to this section">#</a></h2>
+
+<p>The MCP Inspector is the fastest way to see your server as a client does — it lists
+tools, resources and prompts, lets you call them with arbitrary arguments, and shows the
+raw messages. Use it while you are shaping a tool surface. Use it for anything that would
+otherwise become a <code>print()</code> in a stdio server.</p>
+
+<p>For anything you intend to keep true, use a test instead. Chapter 7.</p>
+
+<h2 id="checkpoint">Checkpoint<a class="anchor" href="#checkpoint" aria-label="Link to this section">#</a></h2>
+
+<p>You have a server, it runs on both transports, and you know which parts of your source
+code are visible to a model. The next three chapters take the primitives one at a time,
+and then chapter 7 makes the whole thing testable — because from Part 2 onwards, every
+claim this book makes about <code>ledger</code> is one a test can check.</p>
+<!-- END:body -->
+<!-- BEGIN:pager -->
+<nav class="pager" aria-label="Chapter">
+<a class="prev" href="ch02-the-protocol-in-one-chapter.html"><span class="dir">Previous</span><span class="name">2. The protocol in one chapter</span></a>
+<span class="spacer"></span>
+</nav>
+<!-- END:pager -->
+</main>
+</div>
+</body>
+</html>
