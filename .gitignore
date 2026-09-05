@@ -216,3 +216,16 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- book build ---
+book/_site/
+
+# --- generated datasets ---
+data/*.db
+data/*.sqlite3
+data/generated/
+
+# --- editors ---
+.DS_Store
+.idea/
+.vscode/
