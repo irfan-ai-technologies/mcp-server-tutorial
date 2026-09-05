@@ -272,6 +272,7 @@ a:hover { text-decoration-thickness: 2px; }
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+.status-planned  { background: transparent; color: var(--ink-faint); box-shadow: inset 0 0 0 1px var(--rule); }
 .status-draft    { background: var(--surface-2); color: var(--ink-soft); }
 .status-reviewed { background: var(--accent-soft); color: var(--accent); }
 .status-done     { background: var(--accent); color: var(--paper); }

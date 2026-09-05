@@ -1,0 +1,285 @@
+{
+  "title": "MCP Servers: Zero to Hero",
+  "subtitle": "Building Model Context Protocol servers that survive contact with production",
+  "protocol": "2026-07-28",
+  "spine": "ledger",
+  "repo": "https://github.com/irfan-ai-technologies/mcp-server-tutorial",
+  "parts": [
+    {
+      "title": "Part 0 \u2014 Orientation",
+      "blurb": "What the protocol is, and how to read it off the wire.",
+      "chapters": [
+        {
+          "num": 1,
+          "slug": "ch01-what-mcp-actually-is",
+          "title": "What MCP actually is",
+          "standfirst": "Protocol, not framework. Where it sits next to plain function calling and an API gateway \u2014 and the honest case against using it.",
+          "status": "planned"
+        },
+        {
+          "num": 2,
+          "slug": "ch02-the-protocol-in-one-chapter",
+          "title": "The protocol in one chapter",
+          "standfirst": "The 2026-07-28 wire format read directly: stateless core, server/discover, _meta conventions, resultType, MRTR, Streamable HTTP.",
+          "status": "planned"
+        }
+      ]
+    },
+    {
+      "title": "Part 1 \u2014 Zero: a server that works",
+      "blurb": "Five chapters to a correct, tested server. Enough to start, not a tour of the SDK.",
+      "chapters": [
+        {
+          "num": 3,
+          "slug": "ch03-first-server",
+          "title": "First server",
+          "standfirst": "ledger v0 over stdio, the Inspector, and the shortest useful feedback loop.",
+          "status": "planned",
+          "tag": "ch03-first-server"
+        },
+        {
+          "num": 4,
+          "slug": "ch04-tools",
+          "title": "Tools",
+          "standfirst": "Signatures, JSON Schema 2020-12, structured content, annotations, and errors written for a model rather than a human.",
+          "status": "planned",
+          "tag": "ch04-tools"
+        },
+        {
+          "num": 5,
+          "slug": "ch05-resources",
+          "title": "Resources and templates",
+          "standfirst": "When a resource beats a tool, and why most servers get this backwards.",
+          "status": "planned",
+          "tag": "ch05-resources"
+        },
+        {
+          "num": 6,
+          "slug": "ch06-prompts",
+          "title": "Prompts",
+          "standfirst": "The least-used primitive: what it is actually for, and when to skip it.",
+          "status": "planned",
+          "tag": "ch06-prompts"
+        },
+        {
+          "num": 7,
+          "slug": "ch07-testing-without-an-llm",
+          "title": "Testing without an LLM",
+          "standfirst": "In-process client, golden transcripts, contract tests over the tool surface. Everything after this depends on it.",
+          "status": "planned",
+          "tag": "ch07-testing"
+        }
+      ]
+    },
+    {
+      "title": "Part 2 \u2014 The client's point of view",
+      "blurb": "Your server is a prompt. This part prices it.",
+      "chapters": [
+        {
+          "num": 8,
+          "slug": "ch08-what-the-model-sees",
+          "title": "What the model actually sees",
+          "standfirst": "Token-accounting your own tool surface, measured on ledger rather than borrowed from a blog post.",
+          "status": "planned",
+          "tag": "ch08-token-audit"
+        },
+        {
+          "num": 9,
+          "slug": "ch09-tool-design-is-prompt-engineering",
+          "title": "Tool design is prompt engineering",
+          "standfirst": "Naming, description budgets, determinism, idempotency, and designing a tool a model can recover from.",
+          "status": "planned",
+          "tag": "ch09-tool-design"
+        },
+        {
+          "num": 10,
+          "slug": "ch10-result-shaping",
+          "title": "Result shaping",
+          "standfirst": "Content versus structured output, pagination, truncation, and the failure mode where one successful call ends the conversation.",
+          "status": "planned",
+          "tag": "ch10-result-shaping"
+        }
+      ]
+    },
+    {
+      "title": "Part 3 \u2014 Scale",
+      "blurb": "Statelessness, failure, cost and identity. The largest part of the book.",
+      "chapters": [
+        {
+          "num": 11,
+          "slug": "ch11-going-http",
+          "title": "Going HTTP",
+          "standfirst": "Streamable HTTP, running stateless behind a load balancer, and what horizontal scale actually costs you.",
+          "status": "planned",
+          "tag": "ch11-http"
+        },
+        {
+          "num": 12,
+          "slug": "ch12-life-after-sessions",
+          "title": "Life after sessions",
+          "standfirst": "Server-minted handles: shape, TTL, storage, revocation, idempotency keys \u2014 and how to stop a handle becoming a session by another name.",
+          "status": "planned",
+          "tag": "ch12-state-handles"
+        },
+        {
+          "num": 13,
+          "slug": "ch13-failure",
+          "title": "Failure",
+          "standfirst": "Timeouts, cancellation, backpressure, concurrency limits, and retry design now that streams are not resumable.",
+          "status": "planned",
+          "tag": "ch13-failure"
+        },
+        {
+          "num": 14,
+          "slug": "ch14-caching",
+          "title": "Caching and the prompt cache",
+          "standfirst": "ttlMs, cacheScope, deterministic list ordering, and why reordering your tools costs your users money.",
+          "status": "planned",
+          "tag": "ch14-caching"
+        },
+        {
+          "num": 15,
+          "slug": "ch15-long-running-work",
+          "title": "Long-running work",
+          "standfirst": "The tasks extension, polling with tasks/get, tasks/update, and designing for a client that never comes back.",
+          "status": "planned",
+          "tag": "ch15-tasks"
+        },
+        {
+          "num": 16,
+          "slug": "ch16-observability",
+          "title": "Observability",
+          "standfirst": "OpenTelemetry trace propagation through _meta, per-request log level, and the four numbers worth alerting on.",
+          "status": "planned",
+          "tag": "ch16-observability"
+        },
+        {
+          "num": 17,
+          "slug": "ch17-identity-and-multi-tenancy",
+          "title": "Identity and multi-tenancy",
+          "standfirst": "OAuth, Client ID Metadata Documents, where DPoP is heading, and scoping the tool surface per caller.",
+          "status": "planned",
+          "tag": "ch17-identity"
+        },
+        {
+          "num": 18,
+          "slug": "ch18-security",
+          "title": "Security",
+          "standfirst": "The confused deputy, injection through tool results, poisoned descriptions, egress control, and sandboxing anything that executes.",
+          "status": "planned",
+          "tag": "ch18-security"
+        }
+      ]
+    },
+    {
+      "title": "Part 4 \u2014 The context problem",
+      "blurb": "The hero part: making a large capability surface survive a finite context window.",
+      "chapters": [
+        {
+          "num": 19,
+          "slug": "ch19-shrink-the-surface",
+          "title": "Progressive disclosure I: shrink the surface",
+          "standfirst": "Toolsets, per-identity filtering, gateway and proxy patterns. The cheapest wins, taken first.",
+          "status": "planned",
+          "tag": "ch19-toolsets"
+        },
+        {
+          "num": 20,
+          "slug": "ch20-search-then-load",
+          "title": "Progressive disclosure II: search then load",
+          "standfirst": "A search_tools meta-tool, deferred schemas, the extra round-trip tax, and what the spec's forthcoming progressive discovery will and won't hand you.",
+          "status": "planned",
+          "tag": "ch20-tool-search"
+        },
+        {
+          "num": 21,
+          "slug": "ch21-resources-as-disclosure",
+          "title": "Progressive disclosure III: resources as the channel",
+          "standfirst": "A table-of-contents resource, drill-down URIs, and shaping a corpus so a model can navigate it without reading it.",
+          "status": "planned",
+          "tag": "ch21-disclosure-resources"
+        },
+        {
+          "num": 22,
+          "slug": "ch22-jq-as-a-tool",
+          "title": "jq as a tool",
+          "standfirst": "Hand the model a filter instead of the payload. Tool design, sandboxing jq safely, streaming large inputs, error messages that teach, and a measured before/after.",
+          "status": "planned",
+          "tag": "ch22-jq-tool"
+        },
+        {
+          "num": 23,
+          "slug": "ch23-code-mode",
+          "title": "Code mode",
+          "standfirst": "When to stop exposing tools and expose a typed SDK plus a sandbox \u2014 and an honest comparison against chapters 20 and 22.",
+          "status": "planned",
+          "tag": "ch23-code-mode"
+        }
+      ]
+    },
+    {
+      "title": "Part 5 \u2014 Shipping",
+      "blurb": "Distribution, evaluation, and the checklist you keep.",
+      "chapters": [
+        {
+          "num": 24,
+          "slug": "ch24-packaging-and-distribution",
+          "title": "Packaging and distribution",
+          "standfirst": "stdio versus hosted, the registry, versioning a tool contract, and deprecating a tool without breaking agents in the wild.",
+          "status": "planned",
+          "tag": "ch24-packaging"
+        },
+        {
+          "num": 25,
+          "slug": "ch25-evaluating-a-server",
+          "title": "Evaluating a server",
+          "standfirst": "Task-level evals, a regression harness, and cost and latency budgets per tool.",
+          "status": "planned",
+          "tag": "ch25-evals"
+        },
+        {
+          "num": 26,
+          "slug": "ch26-anti-patterns",
+          "title": "Anti-patterns and a review checklist",
+          "standfirst": "The one page most readers will keep.",
+          "status": "planned"
+        }
+      ]
+    },
+    {
+      "title": "Appendices",
+      "blurb": "",
+      "chapters": [
+        {
+          "num": "A",
+          "slug": "apx-a-without-fastmcp",
+          "title": "The same server without FastMCP",
+          "standfirst": "Raw mcp 2.x, for readers who need to see the seams.",
+          "status": "planned",
+          "tag": "apx-a-raw-sdk"
+        },
+        {
+          "num": "B",
+          "slug": "apx-b-migration",
+          "title": "Migrating 2025-11-25 to 2026-07-28",
+          "standfirst": "What breaks, in what order to fix it, and what to delete outright.",
+          "status": "planned"
+        },
+        {
+          "num": "C",
+          "slug": "apx-c-jq-cookbook",
+          "title": "jq cookbook for agent tool results",
+          "standfirst": "Filters worth keeping, indexed by the shape of the payload.",
+          "status": "planned"
+        },
+        {
+          "num": "D",
+          "slug": "apx-d-glossary",
+          "title": "Glossary",
+          "standfirst": "Protocol terms, used consistently throughout the book.",
+          "status": "planned"
+        }
+      ]
+    }
+  ]
+}
