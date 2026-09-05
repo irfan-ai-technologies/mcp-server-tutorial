@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- BEGIN:title --><title>6. Prompts &mdash; MCP Servers: Zero to Hero</title><!-- END:title -->
+<link rel="stylesheet" href="../assets/book.css">
+<script src="../assets/book.js" defer></script>
+</head>
+<body>
+<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme">◐</button>
+<div class="shell">
+<nav class="sidebar" aria-label="Contents">
+<!-- BEGIN:sidebar -->
+<a class="brand" href="../index.html">MCP Servers: Zero to Hero</a>
+<p class="part">Part 0 — Orientation</p>
+<ol>
+<li><a href="ch01-what-mcp-actually-is.html"><span class="num">1</span>What MCP actually is</a></li>
+<li><a href="ch02-the-protocol-in-one-chapter.html"><span class="num">2</span>The protocol in one chapter</a></li>
+</ol>
+<p class="part">Part 1 — Zero: a server that works</p>
+<ol>
+<li><a href="ch03-first-server.html"><span class="num">3</span>First server</a></li>
+<li><a href="ch04-tools.html"><span class="num">4</span>Tools</a></li>
+<li><a href="ch05-resources.html"><span class="num">5</span>Resources and templates</a></li>
+<li><a href="ch06-prompts.html" aria-current="page"><span class="num">6</span>Prompts</a></li>
+<li><a aria-disabled="true"><span class="num">7</span>Testing without an LLM</a></li>
+</ol>
+<p class="part">Part 2 — The client&#x27;s point of view</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">8</span>What the model actually sees</a></li>
+<li><a aria-disabled="true"><span class="num">9</span>Tool design is prompt engineering</a></li>
+<li><a aria-disabled="true"><span class="num">10</span>Result shaping</a></li>
+</ol>
+<p class="part">Part 3 — Scale</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">11</span>Going HTTP</a></li>
+<li><a aria-disabled="true"><span class="num">12</span>Life after sessions</a></li>
+<li><a aria-disabled="true"><span class="num">13</span>Failure</a></li>
+<li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
+<li><a aria-disabled="true"><span class="num">15</span>Long-running work</a></li>
+<li><a aria-disabled="true"><span class="num">16</span>Observability</a></li>
+<li><a aria-disabled="true"><span class="num">17</span>Identity and multi-tenancy</a></li>
+<li><a aria-disabled="true"><span class="num">18</span>Security</a></li>
+</ol>
+<p class="part">Part 4 — The context problem</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">19</span>Progressive disclosure I: shrink the surface</a></li>
+<li><a aria-disabled="true"><span class="num">20</span>Progressive disclosure II: search then load</a></li>
+<li><a aria-disabled="true"><span class="num">21</span>Progressive disclosure III: resources as the channel</a></li>
+<li><a aria-disabled="true"><span class="num">22</span>jq as a tool</a></li>
+<li><a aria-disabled="true"><span class="num">23</span>Code mode</a></li>
+</ol>
+<p class="part">Part 5 — Shipping</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">24</span>Packaging and distribution</a></li>
+<li><a aria-disabled="true"><span class="num">25</span>Evaluating a server</a></li>
+<li><a aria-disabled="true"><span class="num">26</span>Anti-patterns and a review checklist</a></li>
+</ol>
+<p class="part">Appendices</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">A</span>The same server without FastMCP</a></li>
+<li><a aria-disabled="true"><span class="num">B</span>Migrating 2025-11-25 to 2026-07-28</a></li>
+<li><a aria-disabled="true"><span class="num">C</span>jq cookbook for agent tool results</a></li>
+<li><a aria-disabled="true"><span class="num">D</span>Glossary</a></li>
+</ol>
+<!-- END:sidebar -->
+</nav>
+<main class="content">
+<header class="chapter-head">
+<!-- BEGIN:head -->
+<p class="eyebrow">Part 1 — Zero: a server that works &middot; Chapter 6</p>
+<h1>Prompts</h1>
+<p class="standfirst">The least-used primitive: what it is actually for, and when to skip it.</p>
+<div class="chapter-meta"><span><b>Status</b> <span class="status status-draft">draft</span></span><span><b>Protocol</b> <code>2026-07-28</code></span><span><b>Code</b> <code>git checkout ch06-prompts</code></span></div>
+<!-- END:head -->
+</header>
+<!-- BEGIN:body -->
+<p>Prompts are the primitive people skip. The reasoning is always the same: <em>anyone can
+type that themselves</em>. It is true, and it is true right up until five people type it
+five different ways and two of them get a confidently wrong answer.</p>
+
+<p>A prompt is where a domain's standard question lives, with the method already correct.</p>
+
+<h2 id="user-invoked-and-that-changes-everything">User-invoked, and that changes everything<a class="anchor" href="#user-invoked-and-that-changes-everything" aria-label="Link to this section">#</a></h2>
+
+<p>Tools are chosen by the model. Resources are loaded by the application. Prompts are
+picked by a person — from a slash-command menu, a palette, a button. The user has already
+decided what they want; the prompt supplies the wording.</p>
+
+<p>That has one consequence worth stating plainly: <strong>a prompt costs nothing until it
+is used.</strong> Clients list prompt names and descriptions, but the body only enters the
+conversation when someone picks it. Compare that with a tool, which pays rent in every
+context window whether or not it is called.</p>
+
+<p>So the economics are the reverse of tools. A server with forty tools is in trouble. A
+server with forty prompts is a well-documented server.</p>
+
+<h2 id="what-a-good-prompt-actually-contains">What a good prompt actually contains<a class="anchor" href="#what-a-good-prompt-actually-contains" aria-label="Link to this section">#</a></h2>
+
+<!-- include: code/ledger/src/ledger/prompts.py lang=python region=clearance_check -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/prompts.py</span><span>region clearance_check</span></figcaption>
+<pre class="highlight"><code><span class="nd">@mcp</span><span class="o">.</span><span class="n">prompt</span><span class="p">(</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;clearance_check&quot;</span><span class="p">,</span>
+    <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Can we license this title, in this territory, on these rights?&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">clearance_check</span><span class="p">(</span><span class="n">title</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">territory</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">rights</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;svod&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The question a rights manager asks twenty times a day.</span>
+
+<span class="sd">    Worth having as a prompt because the *method* is the valuable part, not the</span>
+<span class="sd">    wording: check for a conflicting exclusive before checking for an available</span>
+<span class="sd">    window, or you will confidently clear something that is already sold.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;Can we grant </span><span class="si">{</span><span class="n">rights</span><span class="si">}</span><span class="s2"> rights for “</span><span class="si">{</span><span class="n">title</span><span class="si">}</span><span class="s2">” in </span><span class="si">{</span><span class="n">territory</span><span class="si">}</span><span class="s2">?</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;Work in this order and show your reasoning:</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;1. Find the title with search_titles. If several match, list them and &quot;</span>
+        <span class="s2">&quot;stop — do not guess which one is meant.</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;2. Look for an existing exclusive licence covering &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">territory</span><span class="si">}</span><span class="s2"> and </span><span class="si">{</span><span class="n">rights</span><span class="si">}</span><span class="s2">. An exclusive that has not expired blocks &quot;</span>
+        <span class="s2">&quot;the grant, whatever else is true.</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;3. List the windows already committed in that territory, and say which &quot;</span>
+        <span class="s2">&quot;periods are free.</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;4. Name the agreement each blocking licence sits under, so the answer &quot;</span>
+        <span class="s2">&quot;can be checked against the paper.</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;If the licence data is ambiguous, say so rather than resolving it.&quot;</span>
+    <span class="p">)</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>The valuable part is not the question. It is step 2 arriving before step 3.</p>
+
+<p>A model asked "can we license this in Germany?" will, left alone, look for an available
+window and report one. That answer is wrong whenever an unexpired exclusive already covers
+the territory — and it is wrong in the worst way, because it is specific, plausible, and
+about to be repeated to a counterparty.</p>
+
+<p>Checking exclusivity first is not a modelling insight. It is what someone who has done
+the job for six years knows and a new joiner does not. That knowledge normally lives in a
+person, gets partially written into a wiki page nobody opens, and is absent from every
+conversation with a model. A prompt is somewhere to put it.</p>
+
+<p>Look at the other instructions in there. <em>If several match, list them and stop — do
+not guess which one is meant.</em> <em>Name the agreement each blocking licence sits under,
+so the answer can be checked against the paper.</em> <em>If the licence data is ambiguous,
+say so rather than resolving it.</em> Each of those is a rule for when to stop, and stopping
+correctly is most of what makes an answer trustworthy.</p>
+
+<h2 id="prompts-do-not-call-tools">Prompts do not call tools<a class="anchor" href="#prompts-do-not-call-tools" aria-label="Link to this section">#</a></h2>
+
+<p>A prompt returns text. It does not execute anything, and it does not answer anything —
+it assembles a well-formed question and hands it to the model, which then uses the tools it
+already has.</p>
+
+<p>This is a feature. The prompt stays valid when the tools change, works with whatever
+model the client is running, and can be read and argued about by the person whose expertise
+it encodes. That last point matters more than it sounds: a rights manager can read
+<code>clearance_check</code> and tell you it is missing a step. They cannot read your
+orchestration code.</p>
+
+<h2 id="arguments-and-the-ones-you-should-not-add">Arguments, and the ones you should not add<a class="anchor" href="#arguments-and-the-ones-you-should-not-add" aria-label="Link to this section">#</a></h2>
+
+<p><code>clearance_check(title, territory, rights="svod")</code> takes what the user
+knows: the thing they are asking about. It does not take a <code>title_id</code>, because
+a person invoking this from a menu has a name in their head, not an identifier — resolving
+the name is step 1, and step 1 is written to stop if the name is ambiguous.</p>
+
+<p>Two habits are worth keeping. Arguments should be things a human has to hand, not
+identifiers your system happens to use. And defaults should be the common case, so the
+prompt is useful with the minimum typed.</p>
+
+<p>Missing arguments are an error, not a gap to be papered over:</p>
+
+<pre class="term"><span class="prompt">$ </span>prompts/get clearance_check {}
+ValueError: Missing required arguments: {'territory', 'title'}</pre>
+
+<h2 id="testing-text">Testing text<a class="anchor" href="#testing-text" aria-label="Link to this section">#</a></h2>
+
+<p><code>ledger</code>'s prompt tests assert on generated wording, which normally deserves
+suspicion. It is defensible here for one reason: the value of a prompt is the procedure it
+encodes, and a procedure that quietly loses a step is a regression even though nothing
+raises.</p>
+
+<pre class="highlight"><code>assert text.index("exclusive") &lt; text.index("windows already committed"), (
+    "checking availability before exclusivity is how you clear something "
+    "that is already sold"
+)</code></pre>
+
+<p>Assert on the load-bearing parts — the ordering, the stop conditions, the refusals — and
+leave the prose alone. A test that breaks when you fix a typo trains people to delete
+tests.</p>
+
+<h2 id="the-other-prompt-reviews">The other prompt: reviews<a class="anchor" href="#the-other-prompt-reviews" aria-label="Link to this section">#</a></h2>
+
+<p><code>window_review</code> is a different shape. It does not ask a question with an
+answer; it asks the model to find problems, in a stated order of severity, with counts
+before examples and identifiers attached so each finding can be checked.</p>
+
+<p>Its last instruction is the interesting one:</p>
+
+<blockquote>If a title carries more licences than you can review carefully, say how many
+there are and ask which territories matter rather than skimming all of them.</blockquote>
+
+<p>That is the first appearance in this book of a theme that runs through Part 4. The
+catalogue contains a title with 180 licences. No amount of prompt engineering makes 180
+licences reviewable in one pass; the honest move is to say so and narrow. Encoding "notice
+when there is too much and stop" into the prompt is the cheapest available mitigation, and
+it works today. Chapters 19 through 23 are about the expensive ones that work better.</p>
+
+<h2 id="when-to-skip-prompts">When to skip prompts<a class="anchor" href="#when-to-skip-prompts" aria-label="Link to this section">#</a></h2>
+
+<p>If your server exposes one tool and there is one obvious thing to do with it, a prompt
+adds a menu item and no knowledge. Prompts earn their place when there is a
+<em>method</em> — an order of operations, a set of stop conditions, a house convention for
+how an answer should be presented. If you cannot name the expertise you are encoding, you
+are writing a shortcut, not a prompt.</p>
+
+<h2 id="checkpoint">Checkpoint<a class="anchor" href="#checkpoint" aria-label="Link to this section">#</a></h2>
+
+<p>Prompts are free until used, so the constraint on them is your own clarity rather than
+anyone's context budget. Put the order of operations in them, put the stopping rules in
+them, and let the person whose job it is read them.</p>
+
+<p>One chapter left in Part 1, and it is the one everything after depends on.</p>
+<!-- END:body -->
+<!-- BEGIN:pager -->
+<nav class="pager" aria-label="Chapter">
+<a class="prev" href="ch05-resources.html"><span class="dir">Previous</span><span class="name">5. Resources and templates</span></a>
+<span class="spacer"></span>
+</nav>
+<!-- END:pager -->
+</main>
+</div>
+</body>
+</html>
