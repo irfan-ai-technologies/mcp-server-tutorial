@@ -229,3 +229,6 @@ data/generated/
 .DS_Store
 .idea/
 .vscode/
+
+# Claude desktop drops delivered files here when this folder is connected
+Claude outputs/
