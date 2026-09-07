@@ -88,7 +88,7 @@
           "slug": "ch09-tool-design-is-prompt-engineering",
           "title": "Tool design is prompt engineering",
           "standfirst": "Naming, description budgets, determinism, idempotency, and designing a tool a model can recover from.",
-          "status": "planned",
+          "status": "draft",
           "tag": "ch09-tool-design"
         },
         {

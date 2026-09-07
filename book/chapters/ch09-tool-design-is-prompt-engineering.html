@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- BEGIN:title --><title>9. Tool design is prompt engineering &mdash; MCP Servers: Zero to Hero</title><!-- END:title -->
+<link rel="stylesheet" href="../assets/book.css">
+<script src="../assets/book.js" defer></script>
+</head>
+<body>
+<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme">◐</button>
+<div class="shell">
+<nav class="sidebar" aria-label="Contents">
+<!-- BEGIN:sidebar -->
+<a class="brand" href="../index.html">MCP Servers: Zero to Hero</a>
+<p class="part">Part 0 — Orientation</p>
+<ol>
+<li><a href="ch01-what-mcp-actually-is.html"><span class="num">1</span>What MCP actually is</a></li>
+<li><a href="ch02-the-protocol-in-one-chapter.html"><span class="num">2</span>The protocol in one chapter</a></li>
+</ol>
+<p class="part">Part 1 — Zero: a server that works</p>
+<ol>
+<li><a href="ch03-first-server.html"><span class="num">3</span>First server</a></li>
+<li><a href="ch04-tools.html"><span class="num">4</span>Tools</a></li>
+<li><a href="ch05-resources.html"><span class="num">5</span>Resources and templates</a></li>
+<li><a href="ch06-prompts.html"><span class="num">6</span>Prompts</a></li>
+<li><a href="ch07-testing-without-an-llm.html"><span class="num">7</span>Testing without an LLM</a></li>
+</ol>
+<p class="part">Part 2 — The client&#x27;s point of view</p>
+<ol>
+<li><a href="ch08-what-the-model-sees.html"><span class="num">8</span>What the model actually sees</a></li>
+<li><a href="ch09-tool-design-is-prompt-engineering.html" aria-current="page"><span class="num">9</span>Tool design is prompt engineering</a></li>
+<li><a aria-disabled="true"><span class="num">10</span>Result shaping</a></li>
+</ol>
+<p class="part">Part 3 — Scale</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">11</span>Going HTTP</a></li>
+<li><a aria-disabled="true"><span class="num">12</span>Life after sessions</a></li>
+<li><a aria-disabled="true"><span class="num">13</span>Failure</a></li>
+<li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
+<li><a aria-disabled="true"><span class="num">15</span>Long-running work</a></li>
+<li><a aria-disabled="true"><span class="num">16</span>Observability</a></li>
+<li><a aria-disabled="true"><span class="num">17</span>Identity and multi-tenancy</a></li>
+<li><a aria-disabled="true"><span class="num">18</span>Security</a></li>
+</ol>
+<p class="part">Part 4 — The context problem</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">19</span>Progressive disclosure I: shrink the surface</a></li>
+<li><a aria-disabled="true"><span class="num">20</span>Progressive disclosure II: search then load</a></li>
+<li><a aria-disabled="true"><span class="num">21</span>Progressive disclosure III: resources as the channel</a></li>
+<li><a aria-disabled="true"><span class="num">22</span>jq as a tool</a></li>
+<li><a aria-disabled="true"><span class="num">23</span>Code mode</a></li>
+</ol>
+<p class="part">Part 5 — Shipping</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">24</span>Packaging and distribution</a></li>
+<li><a aria-disabled="true"><span class="num">25</span>Evaluating a server</a></li>
+<li><a aria-disabled="true"><span class="num">26</span>Anti-patterns and a review checklist</a></li>
+</ol>
+<p class="part">Appendices</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">A</span>The same server without FastMCP</a></li>
+<li><a aria-disabled="true"><span class="num">B</span>Migrating 2025-11-25 to 2026-07-28</a></li>
+<li><a aria-disabled="true"><span class="num">C</span>jq cookbook for agent tool results</a></li>
+<li><a aria-disabled="true"><span class="num">D</span>Glossary</a></li>
+</ol>
+<!-- END:sidebar -->
+</nav>
+<main class="content">
+<header class="chapter-head">
+<!-- BEGIN:head -->
+<p class="eyebrow">Part 2 — The client&#x27;s point of view &middot; Chapter 9</p>
+<h1>Tool design is prompt engineering</h1>
+<p class="standfirst">Naming, description budgets, determinism, idempotency, and designing a tool a model can recover from.</p>
+<div class="chapter-meta"><span><b>Status</b> <span class="status status-draft">draft</span></span><span><b>Protocol</b> <code>2026-07-28</code></span><span><b>Code</b> <code>git checkout ch09-tool-design</code></span></div>
+<!-- END:head -->
+</header>
+<!-- BEGIN:body -->
+<p>Chapter 8 priced <code>ledger</code>'s surface at about 1,435 tokens. This chapter is
+about spending them well, and the framing that makes that possible is uncomfortable but
+exact: <strong>every one of those tokens is prompt text you wrote, in a prompt you will
+never read, for a decision you will not see being made.</strong></p>
+
+<p>Nobody reviews tool descriptions the way they review prompts. They should.</p>
+
+<h2 id="how-the-choice-actually-happens">How the choice actually happens<a class="anchor" href="#how-the-choice-actually-happens" aria-label="Link to this section">#</a></h2>
+
+<p>When a user asks "what have we sold in Germany?", the model does not execute a decision
+tree. It has your tool names and descriptions in context alongside the question, and it
+produces a call. The inputs to that are: the names as a set, the first line of each
+description, the parameter names and their descriptions, the schema, and whatever your
+instructions block established about vocabulary.</p>
+
+<p>Three failures follow, and they are worth naming separately because they have different
+fixes.</p>
+
+<p><strong>Wrong tool.</strong> Two tools are close enough that either seems plausible. The
+fix is names and first lines that partition the space — not longer descriptions.</p>
+
+<p><strong>Right tool, wrong arguments.</strong> The model picks
+<code>find_licences</code> and omits <code>territory</code> because nothing suggested it
+mattered. The fix is parameter descriptions that say what happens if you leave this out,
+and schemas that make the cheap path the easy one.</p>
+
+<p><strong>Right call, no recovery.</strong> The call fails or returns nothing and the model
+does not know what to try next. The fix is error text, which chapter 4 covered, and it is
+worth re-reading through this lens: an error message is a description that only appears
+when the model is already confused.</p>
+
+<h2 id="names-are-read-as-a-set">Names are read as a set<a class="anchor" href="#names-are-read-as-a-set" aria-label="Link to this section">#</a></h2>
+
+<p>A model does not evaluate <code>find_licences</code> in isolation. It sees four names
+together and infers a structure from them. <code>search_titles</code>,
+<code>get_title</code>, <code>find_licences</code>, <code>licence_detail</code> implies:
+search to find identifiers, get for detail, two entities, licences hang off titles. That
+inference is free and it is right.</p>
+
+<p>Now imagine adding <code>get_licence</code> next to <code>licence_detail</code>. The set
+no longer partitions, and no description makes it recover — the model has to read carefully
+to distinguish tools that the naming implied were different. In practice it will sometimes
+read carefully and sometimes not.</p>
+
+<p><code>ledger</code> now has a test for the mechanical half of this:</p>
+
+<pre class="highlight"><code>assert not b.startswith(a + "_"), f"{b!r} shadows {a!r}"</code></pre>
+
+<p>It will not catch <code>get_licence</code> versus <code>licence_detail</code>. Nothing
+will, except someone reading the list of names out loud and asking whether a stranger could
+tell them apart.</p>
+
+<h2 id="descriptions-are-decision-support-not-documentation">Descriptions are decision support, not documentation<a class="anchor" href="#descriptions-are-decision-support-not-documentation" aria-label="Link to this section">#</a></h2>
+
+<p>The instinct when writing a description is to describe. The useful move is to help
+choose:</p>
+
+<div class="table-scroll">
+<table>
+<thead><tr><th>Documentation instinct</th><th>Decision support</th></tr></thead>
+<tbody>
+<tr><td>Returns licences for a title.</td><td>Licences attached to a title — use after search_titles, and narrow by territory when you only need one market.</td></tr>
+<tr><td>Searches the title catalogue.</td><td>Find titles by name. Use this first — every other tool takes a title_id.</td></tr>
+<tr><td>Gets details for a licence.</td><td>One licence in full, with the agreements above it. Use when a licence id from find_licences needs its terms checked.</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Each right-hand version answers <em>when</em> rather than <em>what</em>, and each names
+the tool that comes before or after it. Sequence information is the single highest-value
+thing you can put in a description, because it is the thing a model has no other way to
+learn.</p>
+
+<p>The cost is real but small: those rewrites are eight to fifteen tokens each. Against a
+10,800-token result, arguing about fifteen tokens of description is not thrift, it is
+displacement activity.</p>
+
+<div class="callout warn">
+<span class="label">Where description length actually hurts</span>
+<p>Not in the token count — in the reading. A three-sentence description competing with
+three other three-sentence descriptions is harder to choose between than four one-liners.
+Long descriptions are a problem when they make the <em>set</em> harder to scan, which is a
+different failure from being expensive.</p>
+</div>
+
+<h2 id="make-the-expensive-path-visible-in-the-schema">Make the expensive path visible in the schema<a class="anchor" href="#make-the-expensive-path-visible-in-the-schema" aria-label="Link to this section">#</a></h2>
+
+<p>Here is the design flaw chapter 8 measured, stated as a design rule rather than a number.
+<code>find_licences</code> has an optional <code>territory</code> parameter. Omitting it can
+return three rows or one hundred and eighty. Nothing in the tool says which.</p>
+
+<p>A model has no way to distinguish a cheap call from an expensive one before making it,
+so it makes the broad one, because the broad one is more likely to contain the answer. That
+is not a mistake. Given what it knows, it is correct.</p>
+
+<p>Three levers, in increasing order of effort:</p>
+
+<p><strong>Say it in the parameter description.</strong> "Omit for every territory — a
+widely-licensed title can return well over a hundred rows." One sentence, and now the model
+is choosing with information.</p>
+
+<p><strong>Make the cheap thing the default.</strong> An optional filter with no default
+invites omission. A <code>limit</code> that defaults to 20 does not.</p>
+
+<p><strong>Refuse, with the number and the lever.</strong> "4,182 licences match; narrow by
+territory or status." The model now knows both the scale of what it asked for and how to
+ask better — and it costs twelve tokens instead of ten thousand. Chapter 10 builds this.</p>
+
+<h2 id="determinism-and-idempotency-are-promises-about-your-system">Determinism and idempotency are promises about your system<a class="anchor" href="#determinism-and-idempotency-are-promises-about-your-system" aria-label="Link to this section">#</a></h2>
+
+<p>Every <code>ledger</code> tool is annotated <code>readOnlyHint</code>,
+<code>idempotentHint</code>, <code>destructiveHint: false</code>. Those hints are how a
+client decides what it may run without asking a human, and what it may safely retry.</p>
+
+<p>Which makes them promises, not descriptions. Chapter 13 will show a broken stream losing
+an in-flight request that the client must reissue as a new one. If you claimed idempotency
+and a second execution charges someone twice, that is your bug and it happens at three in
+the morning.</p>
+
+<p>The honest test is not "does calling this twice return the same value" but "does calling
+this twice leave the world in the same state". A read is trivially idempotent. A write is
+idempotent only if you made it so, usually with a key.</p>
+
+<h2 id="one-tool-or-two">One tool or two?<a class="anchor" href="#one-tool-or-two" aria-label="Link to this section">#</a></h2>
+
+<p>The recurring design question, and the answer is almost always "one, with a parameter".</p>
+
+<p>Two tools cost two definitions and force a choice the model can get wrong. One tool with
+a well-typed parameter costs one definition and moves the decision into the schema, where a
+<code>Literal</code> can enumerate the options and the client can validate before anything
+runs.</p>
+
+<p>Split when the parameter would change what the tool <em>returns</em> in shape, when
+different variants need different permissions, or when one variant is destructive and the
+other is not — that last one because the annotations differ, and a single tool cannot be
+honestly annotated for both.</p>
+
+<h2 id="put-the-numbers-in-ci">Put the numbers in CI<a class="anchor" href="#put-the-numbers-in-ci" aria-label="Link to this section">#</a></h2>
+
+<p>Chapter 8 recommended budgets; here they are, as tests that run in under two seconds:</p>
+
+<!-- include: code/ledger/tests/test_budget.py lang=python lines=17-45 title=budgets_as_tripwires -->
+<figure class="snippet">
+<figcaption><span class="path">budgets as tripwires</span><span>lines 17–45</span></figcaption>
+<pre class="highlight"><code><span class="c1"># do not, and by then someone should be reading chapter 19 instead.</span>
+<span class="n">TOOLS_LIST_BUDGET</span> <span class="o">=</span> <span class="mi">4_000</span>
+<span class="n">ONE_TOOL_BUDGET</span> <span class="o">=</span> <span class="mi">1_200</span>
+<span class="n">DESCRIPTION_FLOOR</span> <span class="o">=</span> <span class="mi">25</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">wire_size</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">model_dump_json</span><span class="p">(</span><span class="n">exclude_none</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_the_tool_surface_fits_its_budget</span><span class="p">(</span><span class="n">client</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">client</span><span class="p">:</span>
+        <span class="n">tools</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">list_tools</span><span class="p">()</span>
+
+    <span class="n">total</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">wire_size</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tools</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">total</span> <span class="o">&lt;=</span> <span class="n">TOOLS_LIST_BUDGET</span><span class="p">,</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;tools/list is </span><span class="si">{</span><span class="n">total</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> characters against a budget of &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">TOOLS_LIST_BUDGET</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">. Raise the budget deliberately, or read &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;chapter 19 about not needing to.&quot;</span>
+    <span class="p">)</span>
+
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_no_single_tool_dominates</span><span class="p">(</span><span class="n">client</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">client</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">tool</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">list_tools</span><span class="p">():</span>
+            <span class="n">size</span> <span class="o">=</span> <span class="n">wire_size</span><span class="p">(</span><span class="n">tool</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="n">size</span> <span class="o">&lt;=</span> <span class="n">ONE_TOOL_BUDGET</span><span class="p">,</span> <span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">tool</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> is </span><span class="si">{</span><span class="n">size</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> characters — usually a schema that &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;grew a nested object or a long enum&quot;</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>The point is not the specific ceilings. It is that a tool surface creeps one reasonable
+addition at a time, and nothing else in your process will ever object. A failing test forces
+the addition to be argued for — and raising the budget in the same commit as the new tool
+is a perfectly good outcome, because now it is a decision with a diff on it.</p>
+
+<h2 id="what-this-cannot-fix">What this cannot fix<a class="anchor" href="#what-this-cannot-fix" aria-label="Link to this section">#</a></h2>
+
+<p>Everything above assumes a surface small enough that a model can read all of it and
+choose well. Below roughly a dozen tools, careful description writing is genuinely most of
+the battle.</p>
+
+<p>Above that, it stops working. Forty well-written descriptions are still forty
+descriptions to read before answering, and the failure is no longer that any one of them is
+bad. That is a structural problem and it needs a structural answer, which is Part 4: shrink
+the surface, search it instead of loading it, or stop exposing tools altogether.</p>
+
+<p>First, though, the other half of chapter 8's bill. Ten thousand eight hundred tokens for
+one correct call.</p>
+<!-- END:body -->
+<!-- BEGIN:pager -->
+<nav class="pager" aria-label="Chapter">
+<a class="prev" href="ch08-what-the-model-sees.html"><span class="dir">Previous</span><span class="name">8. What the model actually sees</span></a>
+<span class="spacer"></span>
+</nav>
+<!-- END:pager -->
+</main>
+</div>
+</body>
+</html>
