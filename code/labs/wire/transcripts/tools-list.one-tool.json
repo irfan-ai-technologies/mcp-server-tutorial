@@ -9,7 +9,7 @@
     "idempotentHint": true,
     "readOnlyHint": true
   },
-  "description": "Licences attached to a title.",
+  "description": "Licences attached to a title, newest window first.\n\nReturns a page of licences plus the total that matched. When more matched\nthan were returned, the result also carries counts by territory and status\nso you can narrow without guessing.",
   "inputSchema": {
     "properties": {
       "title_id": {
@@ -26,7 +26,7 @@
           }
         ],
         "default": null,
-        "description": "ISO 3166-1 alpha-2 code, e.g. GB. Omit for every territory."
+        "description": "ISO 3166-1 alpha-2 code, e.g. GB. Omit for every territory \u2014\na widely-licensed title can match well over a hundred."
       },
       "status": {
         "anyOf": [
@@ -44,6 +44,11 @@
         ],
         "default": null,
         "description": "active, expired or pending. Omit for all three."
+      },
+      "limit": {
+        "default": 20,
+        "type": "integer",
+        "description": "rows to return, 1-100. The default of 20 is usually enough to\nanswer a question; ask for more only when you know you need it."
       }
     },
     "required": [
@@ -54,20 +59,8 @@
   },
   "name": "find_licences",
   "outputSchema": {
-    "properties": {
-      "result": {
-        "items": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "type": "array"
-      }
-    },
-    "required": [
-      "result"
-    ],
     "type": "object",
-    "x-fastmcp-wrap-result": true
+    "additionalProperties": true
   },
   "title": "Find Licences"
 }
