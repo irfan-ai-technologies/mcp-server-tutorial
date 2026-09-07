@@ -56,6 +56,7 @@ def tokenizer():
 METHOD, count_tokens = tokenizer()
 
 
+# region: measuring
 @dataclass
 class Measurement:
     label: str
@@ -72,6 +73,7 @@ def measure(label: str, payload: object, note: str = "") -> Measurement:
 def as_wire(obj) -> dict:
     """What actually crosses the wire for one definition."""
     return json.loads(obj.model_dump_json(exclude_none=True))
+# endregion: measuring
 
 
 async def collect() -> dict:
@@ -167,13 +169,17 @@ cd code/labs/token-audit && uv run --project ../../ledger python audit.py
 
 Loaded into every conversation with this server, whether or not anything is called.
 
+<!-- region: fixed_cost -->
 {table(report["surface"] + [report["instructions"]], "definition")}
+<!-- endregion: fixed_cost -->
 
 **{total["chars"]:,} characters, about {total["tokens"]:,} tokens** — {total["note"]}.
 
 ## What one call costs
 
+<!-- region: call_cost -->
 {table(report["results"], "call")}
+<!-- endregion: call_cost -->
 
 The unfiltered call costs **{naive["tokens"] / total["tokens"]:.1f}×** the entire tool
 surface, and **{naive["tokens"] / narrow["tokens"]:.0f}×** the same call narrowed to one

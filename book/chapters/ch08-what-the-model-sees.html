@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- BEGIN:title --><title>8. What the model actually sees &mdash; MCP Servers: Zero to Hero</title><!-- END:title -->
+<link rel="stylesheet" href="../assets/book.css">
+<script src="../assets/book.js" defer></script>
+</head>
+<body>
+<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme">◐</button>
+<div class="shell">
+<nav class="sidebar" aria-label="Contents">
+<!-- BEGIN:sidebar -->
+<a class="brand" href="../index.html">MCP Servers: Zero to Hero</a>
+<p class="part">Part 0 — Orientation</p>
+<ol>
+<li><a href="ch01-what-mcp-actually-is.html"><span class="num">1</span>What MCP actually is</a></li>
+<li><a href="ch02-the-protocol-in-one-chapter.html"><span class="num">2</span>The protocol in one chapter</a></li>
+</ol>
+<p class="part">Part 1 — Zero: a server that works</p>
+<ol>
+<li><a href="ch03-first-server.html"><span class="num">3</span>First server</a></li>
+<li><a href="ch04-tools.html"><span class="num">4</span>Tools</a></li>
+<li><a href="ch05-resources.html"><span class="num">5</span>Resources and templates</a></li>
+<li><a href="ch06-prompts.html"><span class="num">6</span>Prompts</a></li>
+<li><a href="ch07-testing-without-an-llm.html"><span class="num">7</span>Testing without an LLM</a></li>
+</ol>
+<p class="part">Part 2 — The client&#x27;s point of view</p>
+<ol>
+<li><a href="ch08-what-the-model-sees.html" aria-current="page"><span class="num">8</span>What the model actually sees</a></li>
+<li><a aria-disabled="true"><span class="num">9</span>Tool design is prompt engineering</a></li>
+<li><a aria-disabled="true"><span class="num">10</span>Result shaping</a></li>
+</ol>
+<p class="part">Part 3 — Scale</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">11</span>Going HTTP</a></li>
+<li><a aria-disabled="true"><span class="num">12</span>Life after sessions</a></li>
+<li><a aria-disabled="true"><span class="num">13</span>Failure</a></li>
+<li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
+<li><a aria-disabled="true"><span class="num">15</span>Long-running work</a></li>
+<li><a aria-disabled="true"><span class="num">16</span>Observability</a></li>
+<li><a aria-disabled="true"><span class="num">17</span>Identity and multi-tenancy</a></li>
+<li><a aria-disabled="true"><span class="num">18</span>Security</a></li>
+</ol>
+<p class="part">Part 4 — The context problem</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">19</span>Progressive disclosure I: shrink the surface</a></li>
+<li><a aria-disabled="true"><span class="num">20</span>Progressive disclosure II: search then load</a></li>
+<li><a aria-disabled="true"><span class="num">21</span>Progressive disclosure III: resources as the channel</a></li>
+<li><a aria-disabled="true"><span class="num">22</span>jq as a tool</a></li>
+<li><a aria-disabled="true"><span class="num">23</span>Code mode</a></li>
+</ol>
+<p class="part">Part 5 — Shipping</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">24</span>Packaging and distribution</a></li>
+<li><a aria-disabled="true"><span class="num">25</span>Evaluating a server</a></li>
+<li><a aria-disabled="true"><span class="num">26</span>Anti-patterns and a review checklist</a></li>
+</ol>
+<p class="part">Appendices</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">A</span>The same server without FastMCP</a></li>
+<li><a aria-disabled="true"><span class="num">B</span>Migrating 2025-11-25 to 2026-07-28</a></li>
+<li><a aria-disabled="true"><span class="num">C</span>jq cookbook for agent tool results</a></li>
+<li><a aria-disabled="true"><span class="num">D</span>Glossary</a></li>
+</ol>
+<!-- END:sidebar -->
+</nav>
+<main class="content">
+<header class="chapter-head">
+<!-- BEGIN:head -->
+<p class="eyebrow">Part 2 — The client&#x27;s point of view &middot; Chapter 8</p>
+<h1>What the model actually sees</h1>
+<p class="standfirst">Token-accounting your own tool surface, measured on ledger rather than borrowed from a blog post.</p>
+<div class="chapter-meta"><span><b>Status</b> <span class="status status-draft">draft</span></span><span><b>Protocol</b> <code>2026-07-28</code></span><span><b>Code</b> <code>git checkout ch08-token-audit</code></span></div>
+<!-- END:head -->
+</header>
+<!-- BEGIN:body -->
+<p>Up to here the book has been about what your server does. From here it is about what
+your server costs, and the unit is not milliseconds or dollars — it is space in a context
+window you cannot see, do not pay for, and share with everything else the user is doing.</p>
+
+<p>The uncomfortable part is that you can measure all of it, and almost nobody does.</p>
+
+<h2 id="what-your-server-costs-before-anyone-asks-it-anything">What your server costs before anyone asks it anything<a class="anchor" href="#what-your-server-costs-before-anyone-asks-it-anything" aria-label="Link to this section">#</a></h2>
+
+<p>A client connecting to <code>ledger</code> loads the tool definitions, the resource and
+template metadata, the prompt list and the instructions block. That happens whether or not
+a single tool is called. Here is the bill, produced by
+<code>code/labs/token-audit/audit.py</code> against the code in this repository:</p>
+
+<!-- include: code/labs/token-audit/report.md lang=markdown region=fixed_cost title=the_fixed_cost -->
+<figure class="snippet">
+<figcaption><span class="path">the fixed cost</span><span>region fixed_cost</span></figcaption>
+<pre class="highlight"><code>| definition | chars | tokens | |
+|---|---:|---:|---|
+| tool: search_titles | 779 | 216 |  |
+| tool: get_title | 539 | 150 |  |
+| tool: find_licences | 962 | 267 |  |
+| tool: licence_detail | 554 | 154 |  |
+| resource template: Title | 198 | 55 |  |
+| resource template: Agreement | 296 | 82 |  |
+| resource: Catalogue overview | 343 | 95 |  |
+| prompt: clearance_check | 656 | 182 |  |
+| prompt: window_review | 321 | 89 |  |
+| instructions block | 522 | 145 |  |</code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>About 1,435 tokens for four tools, two templates, one resource and two prompts. On a
+200k window that is under one percent, and you might reasonably conclude there is nothing
+to see here.</p>
+
+<p>There is, and it is arithmetic. <code>find_licences</code> alone is 267 tokens — a tool
+with three parameters and a one-line description. Scale that honestly: a server generated
+from a REST API with forty endpoints lands somewhere between eight and eighteen thousand
+tokens. Connect four such servers, as any real workspace does, and the user is starting
+every conversation forty to seventy thousand tokens down before typing a word.</p>
+
+<p>That is the number the ecosystem has been rediscovering for a year, and it is not caused
+by any single badly-written server. It is caused by every server being individually
+reasonable.</p>
+
+<div class="callout warn">
+<span class="label">Two things worth checking on your own server</span>
+<p>What does <code>tools/list</code> cost in total? And what is the largest single tool
+definition? A schema with deeply nested objects or a long enum can quietly be worth several
+hundred tokens on its own.</p>
+</div>
+
+<h2 id="characters-are-exact-tokens-are-a-claim">Characters are exact; tokens are a claim<a class="anchor" href="#characters-are-exact-tokens-are-a-claim" aria-label="Link to this section">#</a></h2>
+
+<p>Every table in this chapter has two columns for a reason. Character counts are
+verifiable — you can count them yourself and get the same answer. Token counts depend on
+the tokenizer, and Claude, GPT and Llama do not agree.</p>
+
+<p>The committed report was generated with an estimator at 3.6 characters per token,
+because the machine that produced it could not reach a tokenizer's encoding file. Install
+<code>tiktoken</code> and re-run and you will get exact <code>o200k_base</code> counts, and
+the report will say so in its header. The estimate is close enough that none of the
+conclusions move, and the honest framing matters more than the precision: a token count
+quoted without naming a tokenizer is folklore.</p>
+
+<p>What survives the disagreement is the <em>shape</em> of the answer. That is what the rest
+of this chapter is about.</p>
+
+<h2 id="the-number-that-should-worry-you">The number that should worry you<a class="anchor" href="#the-number-that-should-worry-you" aria-label="Link to this section">#</a></h2>
+
+<!-- include: code/labs/token-audit/report.md lang=markdown region=call_cost title=what_one_call_costs -->
+<figure class="snippet">
+<figcaption><span class="path">what one call costs</span><span>region call_cost</span></figcaption>
+<pre class="highlight"><code>| call | chars | tokens | |
+|---|---:|---:|---|
+| get_title on the widest title | 289 | 80 | 1 row(s) |
+| find_licences, no filter | 38,879 | 10,800 | 180 row(s) |
+| find_licences, one territory | 650 | 181 | 3 row(s) |
+| find_licences, active only | 13,573 | 3,770 | 63 row(s) |
+| search_titles, 20 results | 2,478 | 688 | 20 row(s) |
+| licence_detail, one licence | 618 | 172 | 1 row(s) |</code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>One tool call — a correct one, against a valid title, returning accurate data — costs
+about <strong>10,800 tokens</strong>.</p>
+
+<p>That is seven and a half times the entire tool surface it came from. Every efficiency
+you might win by trimming descriptions, dropping a tool, or tightening the instructions
+block is erased sixty times over by a single unfiltered call.</p>
+
+<p>And the same call, narrowed to one territory, costs 181 tokens. The information the user
+actually wanted was in there for under two hundred tokens. The other ten thousand six
+hundred were the cost of not asking a better question.</p>
+
+<h2 id="why-this-is-the-server-s-fault">Why this is the server's fault<a class="anchor" href="#why-this-is-the-server-s-fault" aria-label="Link to this section">#</a></h2>
+
+<p>The natural response is that the model should have narrowed the query. Sometimes it
+should. But look at what <code>find_licences</code> tells a model about the consequences of
+not narrowing:</p>
+
+<p>Nothing. The description says "Licences attached to a title." The schema says
+<code>territory</code> is optional. There is no indication that omitting it might return
+one row or one hundred and eighty, no total returned alongside the rows, and no error when
+the result is absurd. The model has no way to know the difference between a cheap call and
+an expensive one until after it has paid.</p>
+
+<p>A tool that can return 180 rows and does not say so is a tool designed to be misused.
+Chapter 10 fixes exactly this, and the fix is smaller than you would expect.</p>
+
+<h2 id="the-failure-mode-this-produces">The failure mode this produces<a class="anchor" href="#the-failure-mode-this-produces" aria-label="Link to this section">#</a></h2>
+
+<p>The obvious harm is cost, and it is the least interesting one. Three others matter more.</p>
+
+<p><strong>The conversation ends.</strong> A user with a 200k window and three servers
+connected has perhaps 130k of working room. Two unfiltered calls and a long document and
+they are compacting mid-task, losing the earlier reasoning. From their side the agent
+"forgot" what it was doing. It did not forget; you filled the window.</p>
+
+<p><strong>Quality degrades before it fails.</strong> Attention over ten thousand tokens of
+near-identical JSON rows is not free. A model asked to find the two exclusive licences in
+that list will do worse than one handed six relevant rows, and it will do worse
+<em>silently</em> — with a fluent, confident, wrong answer rather than an error.</p>
+
+<p><strong>The cache breaks.</strong> A large result inserted mid-conversation invalidates
+everything cached after it. Chapter 14 puts numbers on that; for now, note that a
+10,800-token result is not a one-off charge but a change to the shape of every subsequent
+turn.</p>
+
+<h2 id="measure-your-own">Measure your own<a class="anchor" href="#measure-your-own" aria-label="Link to this section">#</a></h2>
+
+<p>The audit script is about a hundred lines and most of it is formatting. The parts that
+matter:</p>
+
+<!-- include: code/labs/token-audit/audit.py lang=python region=measuring title=how_the_measuring_works -->
+<figure class="snippet">
+<figcaption><span class="path">how the measuring works</span><span>region measuring</span></figcaption>
+<pre class="highlight"><code><span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Measurement</span><span class="p">:</span>
+    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">chars</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">tokens</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">note</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">measure</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span> <span class="n">note</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Measurement</span><span class="p">:</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="n">payload</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">Measurement</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">count_tokens</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">note</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">as_wire</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;What actually crosses the wire for one definition.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">model_dump_json</span><span class="p">(</span><span class="n">exclude_none</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Point it at your own server, replace the list of representative calls with the ones your
+users actually make, and commit the report. Two habits follow from having it:</p>
+
+<p>Run it in CI and fail the build when the surface grows past a budget you chose
+deliberately. A tool surface creeps the way a Docker image creeps — one reasonable addition
+at a time — and the only defence is a number someone has to argue with.</p>
+
+<p>Run it against the <em>largest plausible</em> result for every tool, not a typical one.
+Typical results tell you nothing; a server is judged by its worst call, because a model
+will find it.</p>
+
+<h2 id="what-the-rest-of-part-2-does-with-this">What the rest of Part 2 does with this<a class="anchor" href="#what-the-rest-of-part-2-does-with-this" aria-label="Link to this section">#</a></h2>
+
+<p>Chapter 9 is about the 1,435 tokens: making every one of them earn its place, since
+description text is the only thing standing between a model and a wrong tool.</p>
+
+<p>Chapter 10 is about the 10,800: what a tool should return, what it should refuse to
+return, and how to tell a model that a query is too broad <em>before</em> it pays for the
+answer.</p>
+
+<p>Then Part 3 scales it, and Part 4 attacks the surface itself — because a server with
+forty tools cannot be fixed by writing better descriptions for all forty.</p>
+
+<!-- END:body -->
+<!-- BEGIN:pager -->
+<nav class="pager" aria-label="Chapter">
+<a class="prev" href="ch07-testing-without-an-llm.html"><span class="dir">Previous</span><span class="name">7. Testing without an LLM</span></a>
+<span class="spacer"></span>
+</nav>
+<!-- END:pager -->
+</main>
+</div>
+</body>
+</html>

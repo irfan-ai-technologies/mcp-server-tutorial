@@ -11,6 +11,7 @@ cd code/labs/token-audit && uv run --project ../../ledger python audit.py
 
 Loaded into every conversation with this server, whether or not anything is called.
 
+<!-- region: fixed_cost -->
 | definition | chars | tokens | |
 |---|---:|---:|---|
 | tool: search_titles | 779 | 216 |  |
@@ -23,11 +24,13 @@ Loaded into every conversation with this server, whether or not anything is call
 | prompt: clearance_check | 656 | 182 |  |
 | prompt: window_review | 321 | 89 |  |
 | instructions block | 522 | 145 |  |
+<!-- endregion: fixed_cost -->
 
 **5,170 characters, about 1,435 tokens** — paid in every conversation, called or not.
 
 ## What one call costs
 
+<!-- region: call_cost -->
 | call | chars | tokens | |
 |---|---:|---:|---|
 | get_title on the widest title | 289 | 80 | 1 row(s) |
@@ -36,6 +39,7 @@ Loaded into every conversation with this server, whether or not anything is call
 | find_licences, active only | 13,573 | 3,770 | 63 row(s) |
 | search_titles, 20 results | 2,478 | 688 | 20 row(s) |
 | licence_detail, one licence | 618 | 172 | 1 row(s) |
+<!-- endregion: call_cost -->
 
 The unfiltered call costs **7.5×** the entire tool
 surface, and **60×** the same call narrowed to one
