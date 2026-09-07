@@ -132,17 +132,39 @@ hundred tokens on its own.</p>
 
 <p>Every table in this chapter has two columns for a reason. Character counts are
 verifiable — you can count them yourself and get the same answer. Token counts depend on
-the tokenizer, and Claude, GPT and Llama do not agree.</p>
+the tokenizer, and Claude, GPT and Llama do not agree, sometimes by a fifth on the same
+JSON payload.</p>
 
-<p>The committed report was generated with an estimator at 3.6 characters per token,
-because the machine that produced it could not reach a tokenizer's encoding file. Install
-<code>tiktoken</code> and re-run and you will get exact <code>o200k_base</code> counts, and
-the report will say so in its header. The estimate is close enough that none of the
-conclusions move, and the honest framing matters more than the precision: a token count
-quoted without naming a tokenizer is folklore.</p>
+<p>These reports were counted with the tokenizer Anthropic shipped inside its Python SDK up
+to <code>anthropic==0.21.x</code>, bundled in the wheel rather than downloaded. Be precise
+about what that is: it is the Claude 2 generation's tokenizer. Current Claude models use a
+different one that is not publicly distributed, so these counts are close but not exact for
+whatever you are running today. It is the default in the audit lab because it is
+reproducible offline by anyone who installs the pin, which matters more for a book's
+numbers than being current.</p>
 
-<p>What survives the disagreement is the <em>shape</em> of the answer. That is what the rest
-of this chapter is about.</p>
+<p><code>audit.py --tokenizer tiktoken</code> counts with OpenAI's
+<code>o200k_base</code> instead, which is exact for GPT models and downloads its encoding
+on first use. Whichever you choose, the report names it in its header and so does every
+table derived from it. That habit is the point of this section.</p>
+
+<div class="callout warn">
+<span class="label">A worked example of getting this wrong</span>
+<p>The first draft of this chapter had no tokenizer available at all and used an estimate of
+3.6 characters per token, reasoning from the familiar figure that English prose runs about
+4.0. Measured against a real tokenizer, the dense JSON that tool results are made of —
+quoted keys, punctuation, identifiers, no long words — runs closer to <strong>2.2</strong>.
+Every result figure in the draft was roughly 40% too low.</p>
+<p>The estimate was not slightly off. It was wrong in the direction that made the problem
+look smaller, which is the direction a wrong estimate usually goes when the person making it
+is also the person arguing there is a problem. Do not quote a token count you have not
+counted.</p>
+</div>
+
+<p>What survives the disagreement between tokenizers is the <em>shape</em> of the answer: a
+surface costing a couple of thousand tokens, one call costing ten times that. Every ratio
+in this chapter is between two numbers counted the same way, which is the only kind of
+comparison that means anything. That is what the rest of the chapter is about.</p>
 
 <h2 id="the-number-that-should-worry-you">The number that should worry you<a class="anchor" href="#the-number-that-should-worry-you" aria-label="Link to this section">#</a></h2>
 

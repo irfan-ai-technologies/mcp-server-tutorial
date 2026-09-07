@@ -1,7 +1,8 @@
 # Token audit — `ledger` (naive)
 
-Counted with **anthropic/claude-2-legacy**. Characters are exact; tokens are an estimate
-unless the method names a real tokenizer. Regenerate with:
+Counted with **anthropic/claude-2-legacy**. Characters are exact. Tokens depend on the
+tokenizer named above — every ratio below compares two numbers counted the same way.
+Regenerate with:
 
 ```bash
 cd code/labs/token-audit && uv run --project ../../ledger python audit.py --label naive
