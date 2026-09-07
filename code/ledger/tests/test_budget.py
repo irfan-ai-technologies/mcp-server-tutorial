@@ -16,7 +16,11 @@ import json
 # Roughly 40% above where the surface sits today. A single new tool fits; four
 # do not, and by then someone should be reading chapter 19 instead.
 TOOLS_LIST_BUDGET = 4_000
-ONE_TOOL_BUDGET = 1_200
+# Raised from 1,200 in the chapter 10 commit. find_licences went to 1,226
+# characters when it gained a limit parameter, a paged return shape and a
+# description that warns about breadth — and that trade bought an eight-fold
+# reduction in what the tool actually returns. Argued, not reflexive.
+ONE_TOOL_BUDGET = 1_400
 DESCRIPTION_FLOOR = 25
 
 

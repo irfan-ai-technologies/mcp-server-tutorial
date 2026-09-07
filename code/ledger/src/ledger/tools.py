@@ -67,38 +67,84 @@ def get_title(title_id: str) -> dict:
 
 
 # region: find_licences
+DEFAULT_LIMIT = 20
+MAX_LIMIT = 100
+
+
 @mcp.tool(annotations=READ_ONLY)
 def find_licences(
     title_id: str,
     territory: str | None = None,
     status: Literal["active", "expired", "pending"] | None = None,
-) -> list[dict]:
-    """Licences attached to a title.
+    limit: int = DEFAULT_LIMIT,
+) -> dict:
+    """Licences attached to a title, newest window first.
+
+    Returns a page of licences plus the total that matched. When more matched
+    than were returned, the result also carries counts by territory and status
+    so you can narrow without guessing.
 
     Args:
         title_id: a title identifier such as T-1042.
-        territory: ISO 3166-1 alpha-2 code, e.g. GB. Omit for every territory.
+        territory: ISO 3166-1 alpha-2 code, e.g. GB. Omit for every territory —
+            a widely-licensed title can match well over a hundred.
         status: active, expired or pending. Omit for all three.
+        limit: rows to return, 1-100. The default of 20 is usually enough to
+            answer a question; ask for more only when you know you need it.
     """
-    # No limit, and no total. A handful of titles carry 180 licences, and asking
-    # about one of them returns every row. Chapter 8 prices that; chapter 10
-    # fixes it. Leaving it naive here is the point.
-    return db.query(
-        """
-        SELECT l.id, l.territory, l.rights, l.exclusive,
-               l.window_start, l.window_end, l.status,
-               e.name AS licensee, l.agreement_id
+    limit = max(1, min(limit, MAX_LIMIT))
+    where = """
         FROM licences l
         JOIN licensees e ON e.id = l.licensee_id
         WHERE l.title_id = :title_id
           AND (:territory IS NULL OR l.territory = :territory)
           AND (:status IS NULL OR l.status = :status)
+    """
+    params = {"title_id": title_id, "territory": territory, "status": status}
+
+    # Count first. A total costs one cheap query and is the single most useful
+    # thing you can hand a model that has asked too broad a question.
+    total = db.one(f"SELECT COUNT(*) AS n {where}", **params)["n"]
+
+    rows = db.query(
+        f"""
+        SELECT l.id, l.territory, l.rights, l.exclusive,
+               l.window_start, l.window_end, l.status,
+               e.name AS licensee, l.agreement_id
+        {where}
         ORDER BY l.window_start DESC, l.id
+        LIMIT :limit
         """,
-        title_id=title_id,
-        territory=territory,
-        status=status,
+        **params,
+        limit=limit,
     )
+
+    result: dict = {"total": total, "returned": len(rows), "licences": rows}
+    if total > len(rows):
+        # Not the rows themselves — the shape of what was left out, so the next
+        # call can be specific. Two small histograms beat a hundred more rows.
+        result["not_shown"] = total - len(rows)
+        result["by_territory"] = {
+            r["territory"]: r["n"]
+            for r in db.query(
+                f"SELECT l.territory, COUNT(*) AS n {where} "
+                "GROUP BY l.territory ORDER BY n DESC, l.territory",
+                **params,
+            )
+        }
+        result["by_status"] = {
+            r["status"]: r["n"]
+            for r in db.query(
+                f"SELECT l.status, COUNT(*) AS n {where} GROUP BY l.status",
+                **params,
+            )
+        }
+        result["guidance"] = (
+            f"{total} licences match; {len(rows)} returned. Narrow by territory "
+            f"or status using the counts above, or raise limit up to {MAX_LIMIT} "
+            f"if you genuinely need every row."
+        )
+    return result
 # endregion: find_licences
 
 

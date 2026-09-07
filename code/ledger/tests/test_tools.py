@@ -86,8 +86,8 @@ async def test_find_licences_filters_by_territory(client):
             "find_licences",
             {"title_id": row["title_id"], "territory": row["territory"]},
         )
-    assert result.data
-    assert {r["territory"] for r in result.data} == {row["territory"]}
+    assert result.data["licences"]
+    assert {r["territory"] for r in result.data["licences"]} == {row["territory"]}
 
 
 async def test_the_schema_rejects_an_unknown_status(client):

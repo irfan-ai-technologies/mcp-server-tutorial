@@ -71,6 +71,21 @@ def measure(label: str, payload: object, note: str = "") -> Measurement:
     return Measurement(label, len(text), count_tokens(text), note)
 
 
+def describe(data) -> str:
+    """How many rows came back, and how many were left behind.
+
+    A paged result says both; the naive version could only ever say one number,
+    which is most of why it was expensive."""
+    if isinstance(data, dict) and "total" in data:
+        shown = data.get("returned", len(data.get("licences", [])))
+        if data["total"] > shown:
+            return f"{shown} of {data['total']} rows"
+        return f"{shown} row(s), complete"
+    if isinstance(data, list):
+        return f"{len(data)} row(s)"
+    return "1 row(s)"
+
+
 def as_wire(obj) -> dict:
     """What actually crosses the wire for one definition."""
     return json.loads(obj.model_dump_json(exclude_none=True))
@@ -114,9 +129,8 @@ async def collect() -> dict:
             ("licence_detail, one licence", "licence_detail", {"licence_id": "LIC-10000"}),
         ]
         for label, name, args in cases:
-            result = await client.call_tool(name, args)
-            rows = result.data if isinstance(result.data, list) else [result.data]
-            results.append(measure(label, result.data, note=f"{len(rows)} row(s)"))
+            data = (await client.call_tool(name, args)).data
+            results.append(measure(label, data, note=describe(data)))
 
         overview = measure(
             "resource: ledger://catalogue (contents)",
