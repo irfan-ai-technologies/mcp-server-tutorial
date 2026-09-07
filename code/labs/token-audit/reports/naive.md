@@ -1,10 +1,10 @@
-# Token audit — `ledger`
+# Token audit — `ledger` (naive)
 
 Counted with **estimate/3.6-chars-per-token**. Characters are exact; tokens are an estimate
 unless the method names a real tokenizer. Regenerate with:
 
 ```bash
-cd code/labs/token-audit && uv run --project ../../ledger python audit.py
+cd code/labs/token-audit && uv run --project ../../ledger python audit.py --label naive
 ```
 
 ## The fixed cost

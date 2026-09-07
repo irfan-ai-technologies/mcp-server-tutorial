@@ -1,11 +1,11 @@
 # token-audit
 
 Prices `ledger`'s tool surface and the results it returns. Chapter 8 is built on the
-committed `report.md`.
+committed `reports/naive.md`.
 
 ```bash
 cd code/labs/token-audit
-uv run --project ../../ledger python audit.py     # rewrites report.json and report.md
+uv run --project ../../ledger python audit.py     # writes reports/<label>.json and .md
 ```
 
 Characters are exact. Tokens are an estimate at 3.6 characters per token unless a real

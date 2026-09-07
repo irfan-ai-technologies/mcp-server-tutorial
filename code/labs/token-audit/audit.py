@@ -17,6 +17,7 @@ what the chapters argue from.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 from dataclasses import asdict, dataclass
@@ -156,13 +157,13 @@ def render(report: dict) -> str:
         r for r in report["results"] if r["label"] == "find_licences, one territory"
     )
 
-    return f"""# Token audit — `ledger`
+    return f"""# Token audit — `ledger` ({report.get("label", "current")})
 
 Counted with **{report["method"]}**. Characters are exact; tokens are an estimate
 unless the method names a real tokenizer. Regenerate with:
 
 ```bash
-cd code/labs/token-audit && uv run --project ../../ledger python audit.py
+cd code/labs/token-audit && uv run --project ../../ledger python audit.py --label {report.get("label", "current")}
 ```
 
 ## The fixed cost
@@ -192,9 +193,21 @@ territory.
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument(
+        "--label",
+        default="bounded",
+        help="report name under reports/ — the book keeps 'naive' (the v0 "
+             "server, chapter 8) and 'bounded' (after chapter 10) side by side",
+    )
+    args = ap.parse_args()
+
     report = asyncio.run(collect())
-    (HERE / "report.json").write_text(json.dumps(report, indent=2) + "\n")
-    (HERE / "report.md").write_text(render(report))
+    report["label"] = args.label
+    out = HERE / "reports"
+    out.mkdir(exist_ok=True)
+    (out / f"{args.label}.json").write_text(json.dumps(report, indent=2) + "\n")
+    (out / f"{args.label}.md").write_text(render(report))
 
     print(f"method: {report['method']}\n")
     print(f"{'':44} {'chars':>8} {'tokens':>8}")
