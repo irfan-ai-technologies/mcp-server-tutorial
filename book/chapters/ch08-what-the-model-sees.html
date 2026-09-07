@@ -94,20 +94,20 @@ a single tool is called. Here is the bill, produced by
 <figcaption><span class="path">the fixed cost</span><span>region fixed_cost</span></figcaption>
 <pre class="highlight"><code>| definition | chars | tokens | |
 |---|---:|---:|---|
-| tool: search_titles | 779 | 216 |  |
-| tool: get_title | 539 | 150 |  |
-| tool: find_licences | 962 | 267 |  |
-| tool: licence_detail | 554 | 154 |  |
-| resource template: Title | 198 | 55 |  |
-| resource template: Agreement | 296 | 82 |  |
-| resource: Catalogue overview | 343 | 95 |  |
-| prompt: clearance_check | 656 | 182 |  |
-| prompt: window_review | 321 | 89 |  |
-| instructions block | 522 | 145 |  |</code></pre>
+| tool: search_titles | 779 | 220 |  |
+| tool: get_title | 539 | 151 |  |
+| tool: find_licences | 962 | 287 |  |
+| tool: licence_detail | 554 | 158 |  |
+| resource template: Title | 198 | 57 |  |
+| resource template: Agreement | 296 | 81 |  |
+| resource: Catalogue overview | 343 | 81 |  |
+| prompt: clearance_check | 656 | 161 |  |
+| prompt: window_review | 321 | 81 |  |
+| instructions block | 522 | 123 |  |</code></pre>
 </figure>
 <!-- endinclude -->
 
-<p>About 1,435 tokens for four tools, two templates, one resource and two prompts. On a
+<p>About 1,400 tokens for four tools, two templates, one resource and two prompts. On a
 200k window that is under one percent, and you might reasonably conclude there is nothing
 to see here.</p>
 
@@ -151,25 +151,26 @@ of this chapter is about.</p>
 <figcaption><span class="path">what one call costs</span><span>region call_cost</span></figcaption>
 <pre class="highlight"><code>| call | chars | tokens | |
 |---|---:|---:|---|
-| get_title on the widest title | 289 | 80 | 1 row(s) |
-| find_licences, no filter | 38,879 | 10,800 | 180 row(s) |
-| find_licences, one territory | 650 | 181 | 3 row(s) |
-| find_licences, active only | 13,573 | 3,770 | 63 row(s) |
-| search_titles, 20 results | 2,478 | 688 | 20 row(s) |
-| licence_detail, one licence | 618 | 172 | 1 row(s) |</code></pre>
+| get_title on the widest title | 289 | 87 | 1 row(s) |
+| find_licences, no filter | 38,879 | 15,118 | 180 row(s) |
+| find_licences, one territory | 650 | 253 | 3 row(s) |
+| find_licences, active only | 13,573 | 5,312 | 63 row(s) |
+| search_titles, 20 results | 2,478 | 853 | 20 row(s) |
+| licence_detail, one licence | 618 | 252 | 1 row(s) |</code></pre>
 </figure>
 <!-- endinclude -->
 
 <p>One tool call — a correct one, against a valid title, returning accurate data — costs
-about <strong>10,800 tokens</strong>.</p>
+<strong>15,118 tokens</strong>.</p>
 
-<p>That is seven and a half times the entire tool surface it came from. Every efficiency
-you might win by trimming descriptions, dropping a tool, or tightening the instructions
-block is erased sixty times over by a single unfiltered call.</p>
+<p>That is nearly eleven times the entire tool surface it came from. Every efficiency you
+might win by trimming descriptions, dropping a tool, or tightening the instructions block is
+erased many times over by a single unfiltered call.</p>
 
-<p>And the same call, narrowed to one territory, costs 181 tokens. The information the user
-actually wanted was in there for under two hundred tokens. The other ten thousand six
-hundred were the cost of not asking a better question.</p>
+<p>And the same call, narrowed to one territory, costs 253 tokens. The information the user
+actually wanted was in there for a quarter of a thousand tokens. The other fourteen thousand
+eight hundred and sixty-five were the cost of not asking a better question — a factor of
+sixty, for one omitted argument.</p>
 
 <h2 id="why-this-is-the-server-s-fault">Why this is the server's fault<a class="anchor" href="#why-this-is-the-server-s-fault" aria-label="Link to this section">#</a></h2>
 
@@ -202,7 +203,7 @@ that list will do worse than one handed six relevant rows, and it will do worse
 
 <p><strong>The cache breaks.</strong> A large result inserted mid-conversation invalidates
 everything cached after it. Chapter 14 puts numbers on that; for now, note that a
-10,800-token result is not a one-off charge but a change to the shape of every subsequent
+15,000-token result is not a one-off charge but a change to the shape of every subsequent
 turn.</p>
 
 <h2 id="measure-your-own">Measure your own<a class="anchor" href="#measure-your-own" aria-label="Link to this section">#</a></h2>
@@ -260,10 +261,10 @@ will find it.</p>
 
 <h2 id="what-the-rest-of-part-2-does-with-this">What the rest of Part 2 does with this<a class="anchor" href="#what-the-rest-of-part-2-does-with-this" aria-label="Link to this section">#</a></h2>
 
-<p>Chapter 9 is about the 1,435 tokens: making every one of them earn its place, since
+<p>Chapter 9 is about the 1,400 tokens: making every one of them earn its place, since
 description text is the only thing standing between a model and a wrong tool.</p>
 
-<p>Chapter 10 is about the 10,800: what a tool should return, what it should refuse to
+<p>Chapter 10 is about the 15,118: what a tool should return, what it should refuse to
 return, and how to tell a model that a query is too broad <em>before</em> it pays for the
 answer.</p>
 

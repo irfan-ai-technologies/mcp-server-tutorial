@@ -77,8 +77,8 @@
 </header>
 <!-- BEGIN:body -->
 <p>Chapter 8 put a number on the problem: one correct call to <code>find_licences</code>
-cost about 10,800 tokens, seven and a half times the entire tool surface it came from. This
-chapter fixes it, and the fix is worth about forty lines.</p>
+cost 15,118 tokens, nearly eleven times the entire tool surface it came from. This chapter
+fixes it, and the fix is worth about forty lines.</p>
 
 <p>The result is not just cheaper. It tells the model more than the dump did.</p>
 
@@ -92,7 +92,7 @@ filing cabinet contains a summary.</p>
 <p>The naive tool returned every row because that was the only thing it knew how to do. It
 had no total, no notion of "too many", and no way to say <em>you asked for more than you
 want</em>. So it answered the literal question and left the model to do the aggregation, in
-context, at ten thousand tokens.</p>
+context, at fifteen thousand tokens.</p>
 
 <h2 id="three-things-every-list-returning-tool-needs">Three things every list-returning tool needs<a class="anchor" href="#three-things-every-list-returning-tool-needs" aria-label="Link to this section">#</a></h2>
 
@@ -209,12 +209,12 @@ they do not need — there is a test for that.</p>
 <figcaption><span class="path">after</span><span>region call_cost</span></figcaption>
 <pre class="highlight"><code>| call | chars | tokens | |
 |---|---:|---:|---|
-| get_title on the widest title | 289 | 80 | 1 row(s) |
-| find_licences, no filter | 4,872 | 1,353 | 20 of 180 rows |
-| find_licences, one territory | 691 | 192 | 3 row(s), complete |
-| find_licences, active only | 4,790 | 1,331 | 20 of 63 rows |
-| search_titles, 20 results | 2,478 | 688 | 20 row(s) |
-| licence_detail, one licence | 618 | 172 | 1 row(s) |</code></pre>
+| get_title on the widest title | 289 | 87 | 1 row(s) |
+| find_licences, no filter | 4,872 | 1,930 | 20 of 180 rows |
+| find_licences, one territory | 691 | 267 | 3 row(s), complete |
+| find_licences, active only | 4,790 | 1,898 | 20 of 63 rows |
+| search_titles, 20 results | 2,478 | 853 | 20 row(s) |
+| licence_detail, one licence | 618 | 252 | 1 row(s) |</code></pre>
 </figure>
 <!-- endinclude -->
 
@@ -224,22 +224,21 @@ they do not need — there is a test for that.</p>
 <table>
 <thead><tr><th>Call</th><th>Naive</th><th>Paged</th><th></th></tr></thead>
 <tbody>
-<tr><td><code>find_licences</code>, no filter</td><td>10,800 tokens</td><td>1,353 tokens</td><td>8.0× smaller</td></tr>
-<tr><td><code>find_licences</code>, active only</td><td>3,770 tokens</td><td>1,331 tokens</td><td>2.8× smaller</td></tr>
-<tr><td><code>find_licences</code>, one territory</td><td>181 tokens</td><td>192 tokens</td><td>6% larger</td></tr>
-<tr><td>Fixed tool surface</td><td>1,435 tokens</td><td>1,528 tokens</td><td>6.5% larger</td></tr>
+<tr><td><code>find_licences</code>, no filter</td><td>15,118 tokens</td><td>1,930 tokens</td><td>7.8× smaller</td></tr>
+<tr><td><code>find_licences</code>, active only</td><td>5,312 tokens</td><td>1,898 tokens</td><td>2.8× smaller</td></tr>
+<tr><td><code>find_licences</code>, one territory</td><td>253 tokens</td><td>267 tokens</td><td>5.5% larger</td></tr>
+<tr><td>Fixed tool surface</td><td>1,400 tokens</td><td>1,474 tokens</td><td>5.3% larger</td></tr>
 </tbody>
 </table>
 </div>
 
-<p>Both increases are real and both are worth naming. The narrow call grew by eleven tokens
-because it now carries <code>total</code> and <code>returned</code>. The surface grew by
-ninety-three because the tool gained a parameter and a description that warns about
+<p>Both increases are real and both are worth naming. The narrow call grew by fourteen
+tokens because it now carries <code>total</code> and <code>returned</code>. The surface grew
+by seventy-four because the tool gained a parameter and a description that warns about
 breadth.</p>
 
-<p>You pay a fixed 6.5% and a rounding error on cheap calls, to remove nine and a half
-thousand tokens from the expensive one. That is the trade, stated honestly, and it is not
-close.</p>
+<p>You pay a fixed 5.3% and a rounding error on cheap calls, to remove thirteen thousand
+tokens from the expensive one. That is the trade, stated honestly, and it is not close.</p>
 
 <h2 id="the-budget-test-did-its-job">The budget test did its job<a class="anchor" href="#the-budget-test-did-its-job" aria-label="Link to this section">#</a></h2>
 
@@ -299,7 +298,7 @@ refusal that names the number and the lever is a cheap result, not a failed one.
 <h2 id="what-part-2-established">What Part 2 established<a class="anchor" href="#what-part-2-established" aria-label="Link to this section">#</a></h2>
 
 <p>Your server is a prompt, and it has a bill. The fixed part is your tool surface — about
-1,500 tokens for <code>ledger</code>, measurable, budgeted and enforced in CI. The variable
+1,470 tokens for <code>ledger</code>, measurable, budgeted and enforced in CI. The variable
 part is what your tools return, and it dominates: one careless call outweighs every
 description you might have trimmed.</p>
 
