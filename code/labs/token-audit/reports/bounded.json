@@ -1,5 +1,5 @@
 {
-  "method": "estimate/3.6-chars-per-token",
+  "method": "anthropic/claude-2-legacy",
   "server": "ledger",
   "titles_measured": [
     "T-1106"
@@ -8,112 +8,112 @@
     {
       "label": "tool: search_titles",
       "chars": 779,
-      "tokens": 216,
+      "tokens": 220,
       "note": ""
     },
     {
       "label": "tool: get_title",
       "chars": 539,
-      "tokens": 150,
+      "tokens": 151,
       "note": ""
     },
     {
       "label": "tool: find_licences",
       "chars": 1296,
-      "tokens": 360,
+      "tokens": 361,
       "note": ""
     },
     {
       "label": "tool: licence_detail",
       "chars": 554,
-      "tokens": 154,
+      "tokens": 158,
       "note": ""
     },
     {
       "label": "resource template: Title",
       "chars": 198,
-      "tokens": 55,
+      "tokens": 57,
       "note": ""
     },
     {
       "label": "resource template: Agreement",
       "chars": 296,
-      "tokens": 82,
+      "tokens": 81,
       "note": ""
     },
     {
       "label": "resource: Catalogue overview",
       "chars": 343,
-      "tokens": 95,
+      "tokens": 81,
       "note": ""
     },
     {
       "label": "prompt: clearance_check",
       "chars": 656,
-      "tokens": 182,
+      "tokens": 161,
       "note": ""
     },
     {
       "label": "prompt: window_review",
       "chars": 321,
-      "tokens": 89,
+      "tokens": 81,
       "note": ""
     }
   ],
   "instructions": {
     "label": "instructions block",
     "chars": 522,
-    "tokens": 145,
+    "tokens": 123,
     "note": ""
   },
   "surface_total": {
     "label": "TOTAL fixed cost",
     "chars": 5504,
-    "tokens": 1528,
+    "tokens": 1474,
     "note": "paid in every conversation, called or not"
   },
   "results": [
     {
       "label": "get_title on the widest title",
       "chars": 289,
-      "tokens": 80,
+      "tokens": 87,
       "note": "1 row(s)"
     },
     {
       "label": "find_licences, no filter",
       "chars": 4872,
-      "tokens": 1353,
+      "tokens": 1930,
       "note": "20 of 180 rows"
     },
     {
       "label": "find_licences, one territory",
       "chars": 691,
-      "tokens": 192,
+      "tokens": 267,
       "note": "3 row(s), complete"
     },
     {
       "label": "find_licences, active only",
       "chars": 4790,
-      "tokens": 1331,
+      "tokens": 1898,
       "note": "20 of 63 rows"
     },
     {
       "label": "search_titles, 20 results",
       "chars": 2478,
-      "tokens": 688,
+      "tokens": 853,
       "note": "20 row(s)"
     },
     {
       "label": "licence_detail, one licence",
       "chars": 618,
-      "tokens": 172,
+      "tokens": 252,
       "note": "1 row(s)"
     }
   ],
   "overview_resource": {
     "label": "resource: ledger://catalogue (contents)",
     "chars": 1148,
-    "tokens": 319,
+    "tokens": 418,
     "note": ""
   },
   "label": "bounded"

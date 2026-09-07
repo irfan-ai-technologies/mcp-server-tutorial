@@ -24,37 +24,76 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from fastmcp import Client
-
 from ledger.server import mcp
 
 HERE = Path(__file__).resolve().parent
 
-# Characters per token for dense JSON and schema text. English prose runs closer
-# to 4.0; identifiers, punctuation and quoted keys push JSON denser than that.
-# Only used when no tokenizer is available; the report says which applied.
-CHARS_PER_TOKEN = 3.6
+# Fallback only, and a poor one: measured against a real tokenizer, dense JSON
+# runs closer to 2.2 characters per token than the 3.6 that English prose
+# suggests. Quoted numbers should come from a named tokenizer, not from this.
+CHARS_PER_TOKEN = 2.2
 
 
-def tokenizer():
-    """A real tokenizer if one is installed, otherwise the estimator.
+def _tiktoken():
+    """OpenAI's o200k_base. Downloads its encoding on first use."""
+    import tiktoken
 
-    Readers on an unrestricted network get exact numbers by installing tiktoken.
-    The machine this report was generated on could not reach the encoding file,
-    so the committed numbers are estimates — stated, rather than quietly fudged.
+    enc = tiktoken.get_encoding("o200k_base")
+    return "tiktoken/o200k_base", lambda s: len(enc.encode(s))
+
+
+def _claude():
+    """A Claude tokenizer, shipped inside the anthropic SDK up to 0.21.x.
+
+    Worth being precise about what this is. It is the tokenizer Anthropic
+    published for the Claude 2 generation, bundled in the wheel rather than
+    downloaded. Current Claude models do not use it and their tokenizer is not
+    distributed, so these counts are close but not exact for the model you are
+    probably running. They are far closer than a characters-per-token guess,
+    and — the reason it is the default here — they are reproducible offline by
+    anyone who installs the pin.
     """
-    try:
-        import tiktoken
+    import pathlib
 
-        enc = tiktoken.get_encoding("o200k_base")
-        return "tiktoken/o200k_base", lambda s: len(enc.encode(s))
-    except Exception:
-        return (
-            f"estimate/{CHARS_PER_TOKEN}-chars-per-token",
-            lambda s: round(len(s) / CHARS_PER_TOKEN),
-        )
+    import anthropic
+    from tokenizers import Tokenizer
+
+    path = pathlib.Path(anthropic.__file__).parent / "tokenizer.json"
+    tok = Tokenizer.from_file(str(path))
+    return "anthropic/claude-2-legacy", lambda s: len(tok.encode(s).ids)
 
 
-METHOD, count_tokens = tokenizer()
+def _estimate():
+    return (
+        f"estimate/{CHARS_PER_TOKEN}-chars-per-token",
+        lambda s: round(len(s) / CHARS_PER_TOKEN),
+    )
+
+
+ORDER = {"claude": _claude, "tiktoken": _tiktoken, "estimate": _estimate}
+
+
+def tokenizer(preference: str = "auto"):
+    """Pick a tokenizer, preferring a real one, and say which was used.
+
+    There is no single token count for a string — Claude, GPT and Llama
+    disagree, sometimes by 20% on the same JSON. So the report names its
+    tokenizer, and the arguments in the book are built on ratios between
+    numbers counted the same way rather than on any absolute figure.
+    """
+    candidates = (
+        [ORDER[preference]] if preference in ORDER
+        else [_claude, _tiktoken, _estimate]
+    )
+    for build in candidates:
+        try:
+            return build()
+        except Exception as exc:  # noqa: BLE001 — any failure means try the next one
+            print(f"  ({build.__name__.strip('_')} unavailable: {type(exc).__name__})")
+    return _estimate()
+
+
+METHOD, count_tokens = tokenizer()  # replaced in main() once flags are parsed
 
 
 # region: measuring
@@ -209,12 +248,22 @@ territory.
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument(
+        "--tokenizer",
+        default="auto",
+        choices=["auto", "claude", "tiktoken", "estimate"],
+        help="auto prefers the bundled Claude tokenizer, then tiktoken, then "
+             "a characters-per-token estimate",
+    )
+    ap.add_argument(
         "--label",
         default="bounded",
         help="report name under reports/ — the book keeps 'naive' (the v0 "
              "server, chapter 8) and 'bounded' (after chapter 10) side by side",
     )
     args = ap.parse_args()
+
+    global METHOD, count_tokens
+    METHOD, count_tokens = tokenizer(args.tokenizer)
 
     report = asyncio.run(collect())
     report["label"] = args.label
