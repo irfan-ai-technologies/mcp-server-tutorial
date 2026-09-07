@@ -8,8 +8,8 @@ can check out at any chapter.
 `book/index.html` from a clone. Chapters are plain HTML with no build step required to read
 them.
 
-> **Status: in progress.** Part 0 and Part 1 are drafted — chapters 1 to 7, with `ledger`
-> running on both transports behind 24 tests. Chapters are published as they are written and
+> **Status: in progress.** Parts 0 to 2 are drafted — chapters 1 to 10, with `ledger`
+> running on both transports behind 34 tests and a measured token budget. Chapters are published as they are written and
 > each carries its own status. See the [contents page](book/index.html) for what is drafted, reviewed, or
 > still planned, and [`PLAN.md`](PLAN.md) for the full outline and where the work is going.
 
