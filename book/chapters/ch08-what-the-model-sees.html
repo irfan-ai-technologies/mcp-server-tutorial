@@ -30,7 +30,7 @@
 <ol>
 <li><a href="ch08-what-the-model-sees.html" aria-current="page"><span class="num">8</span>What the model actually sees</a></li>
 <li><a href="ch09-tool-design-is-prompt-engineering.html"><span class="num">9</span>Tool design is prompt engineering</a></li>
-<li><a aria-disabled="true"><span class="num">10</span>Result shaping</a></li>
+<li><a href="ch10-result-shaping.html"><span class="num">10</span>Result shaping</a></li>
 </ol>
 <p class="part">Part 3 — Scale</p>
 <ol>
@@ -224,6 +224,21 @@ matter:</p>
 <span class="k">def</span><span class="w"> </span><span class="nf">measure</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span> <span class="n">note</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Measurement</span><span class="p">:</span>
     <span class="n">text</span> <span class="o">=</span> <span class="n">payload</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">Measurement</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">count_tokens</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">note</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;How many rows came back, and how many were left behind.</span>
+
+<span class="sd">    A paged result says both; the naive version could only ever say one number,</span>
+<span class="sd">    which is most of why it was expensive.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;total&quot;</span> <span class="ow">in</span> <span class="n">data</span><span class="p">:</span>
+        <span class="n">shown</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;returned&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;licences&quot;</span><span class="p">,</span> <span class="p">[])))</span>
+        <span class="k">if</span> <span class="n">data</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">shown</span><span class="p">:</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">shown</span><span class="si">}</span><span class="s2"> of </span><span class="si">{</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;total&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> rows&quot;</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">shown</span><span class="si">}</span><span class="s2"> row(s), complete&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="si">}</span><span class="s2"> row(s)&quot;</span>
+    <span class="k">return</span> <span class="s2">&quot;1 row(s)&quot;</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">as_wire</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>

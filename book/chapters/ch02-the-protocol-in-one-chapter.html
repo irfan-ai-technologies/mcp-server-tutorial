@@ -30,7 +30,7 @@
 <ol>
 <li><a href="ch08-what-the-model-sees.html"><span class="num">8</span>What the model actually sees</a></li>
 <li><a href="ch09-tool-design-is-prompt-engineering.html"><span class="num">9</span>Tool design is prompt engineering</a></li>
-<li><a aria-disabled="true"><span class="num">10</span>Result shaping</a></li>
+<li><a href="ch10-result-shaping.html"><span class="num">10</span>Result shaping</a></li>
 </ol>
 <p class="part">Part 3 — Scale</p>
 <ol>
@@ -380,7 +380,15 @@ is not.</p>
 <!-- include: code/labs/wire/transcripts/discover.response.json title=server/discover -->
 <figure class="snippet">
 <figcaption><span class="path">server/discover</span><span></span></figcaption>
-<pre class="highlight"><code></code></pre>
+<pre class="highlight"><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;jsonrpc&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2.0&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">-32601</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Method not found&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;server/discover&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span></code></pre>
 </figure>
 <!-- endinclude -->
 

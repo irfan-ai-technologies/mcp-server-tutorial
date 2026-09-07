@@ -30,7 +30,7 @@
 <ol>
 <li><a href="ch08-what-the-model-sees.html"><span class="num">8</span>What the model actually sees</a></li>
 <li><a href="ch09-tool-design-is-prompt-engineering.html"><span class="num">9</span>Tool design is prompt engineering</a></li>
-<li><a aria-disabled="true"><span class="num">10</span>Result shaping</a></li>
+<li><a href="ch10-result-shaping.html"><span class="num">10</span>Result shaping</a></li>
 </ol>
 <p class="part">Part 3 — Scale</p>
 <ol>
@@ -109,38 +109,84 @@ entries into per-parameter descriptions. Everything below the first line and out
 <!-- include: code/ledger/src/ledger/tools.py lang=python region=find_licences -->
 <figure class="snippet">
 <figcaption><span class="path">code/ledger/src/ledger/tools.py</span><span>region find_licences</span></figcaption>
-<pre class="highlight"><code><span class="nd">@mcp</span><span class="o">.</span><span class="n">tool</span><span class="p">(</span><span class="n">annotations</span><span class="o">=</span><span class="n">READ_ONLY</span><span class="p">)</span>
+<pre class="highlight"><code><span class="n">DEFAULT_LIMIT</span> <span class="o">=</span> <span class="mi">20</span>
+<span class="n">MAX_LIMIT</span> <span class="o">=</span> <span class="mi">100</span>
+
+
+<span class="nd">@mcp</span><span class="o">.</span><span class="n">tool</span><span class="p">(</span><span class="n">annotations</span><span class="o">=</span><span class="n">READ_ONLY</span><span class="p">)</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">find_licences</span><span class="p">(</span>
     <span class="n">title_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
     <span class="n">territory</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">status</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;active&quot;</span><span class="p">,</span> <span class="s2">&quot;expired&quot;</span><span class="p">,</span> <span class="s2">&quot;pending&quot;</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Licences attached to a title.</span>
+    <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_LIMIT</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Licences attached to a title, newest window first.</span>
+
+<span class="sd">    Returns a page of licences plus the total that matched. When more matched</span>
+<span class="sd">    than were returned, the result also carries counts by territory and status</span>
+<span class="sd">    so you can narrow without guessing.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        title_id: a title identifier such as T-1042.</span>
-<span class="sd">        territory: ISO 3166-1 alpha-2 code, e.g. GB. Omit for every territory.</span>
+<span class="sd">        territory: ISO 3166-1 alpha-2 code, e.g. GB. Omit for every territory —</span>
+<span class="sd">            a widely-licensed title can match well over a hundred.</span>
 <span class="sd">        status: active, expired or pending. Omit for all three.</span>
+<span class="sd">        limit: rows to return, 1-100. The default of 20 is usually enough to</span>
+<span class="sd">            answer a question; ask for more only when you know you need it.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="c1"># No limit, and no total. A handful of titles carry 180 licences, and asking</span>
-    <span class="c1"># about one of them returns every row. Chapter 8 prices that; chapter 10</span>
-    <span class="c1"># fixes it. Leaving it naive here is the point.</span>
-    <span class="k">return</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        SELECT l.id, l.territory, l.rights, l.exclusive,</span>
-<span class="sd">               l.window_start, l.window_end, l.status,</span>
-<span class="sd">               e.name AS licensee, l.agreement_id</span>
-<span class="sd">        FROM licences l</span>
-<span class="sd">        JOIN licensees e ON e.id = l.licensee_id</span>
-<span class="sd">        WHERE l.title_id = :title_id</span>
-<span class="sd">          AND (:territory IS NULL OR l.territory = :territory)</span>
-<span class="sd">          AND (:status IS NULL OR l.status = :status)</span>
-<span class="sd">        ORDER BY l.window_start DESC, l.id</span>
-<span class="sd">        &quot;&quot;&quot;</span><span class="p">,</span>
-        <span class="n">title_id</span><span class="o">=</span><span class="n">title_id</span><span class="p">,</span>
-        <span class="n">territory</span><span class="o">=</span><span class="n">territory</span><span class="p">,</span>
-        <span class="n">status</span><span class="o">=</span><span class="n">status</span><span class="p">,</span>
-    <span class="p">)</span></code></pre>
+    <span class="n">limit</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">limit</span><span class="p">,</span> <span class="n">MAX_LIMIT</span><span class="p">))</span>
+    <span class="n">where</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        FROM licences l</span>
+<span class="s2">        JOIN licensees e ON e.id = l.licensee_id</span>
+<span class="s2">        WHERE l.title_id = :title_id</span>
+<span class="s2">          AND (:territory IS NULL OR l.territory = :territory)</span>
+<span class="s2">          AND (:status IS NULL OR l.status = :status)</span>
+<span class="s2">    &quot;&quot;&quot;</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;title_id&quot;</span><span class="p">:</span> <span class="n">title_id</span><span class="p">,</span> <span class="s2">&quot;territory&quot;</span><span class="p">:</span> <span class="n">territory</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="n">status</span><span class="p">}</span>
+
+    <span class="c1"># Count first. A total costs one cheap query and is the single most useful</span>
+    <span class="c1"># thing you can hand a model that has asked too broad a question.</span>
+    <span class="n">total</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">one</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;SELECT COUNT(*) AS n </span><span class="si">{</span><span class="n">where</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)[</span><span class="s2">&quot;n&quot;</span><span class="p">]</span>
+
+    <span class="n">rows</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        SELECT l.id, l.territory, l.rights, l.exclusive,</span>
+<span class="s2">               l.window_start, l.window_end, l.status,</span>
+<span class="s2">               e.name AS licensee, l.agreement_id</span>
+<span class="s2">        </span><span class="si">{</span><span class="n">where</span><span class="si">}</span>
+<span class="s2">        ORDER BY l.window_start DESC, l.id</span>
+<span class="s2">        LIMIT :limit</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">params</span><span class="p">,</span>
+        <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">result</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;total&quot;</span><span class="p">:</span> <span class="n">total</span><span class="p">,</span> <span class="s2">&quot;returned&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">),</span> <span class="s2">&quot;licences&quot;</span><span class="p">:</span> <span class="n">rows</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">total</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">):</span>
+        <span class="c1"># Not the rows themselves — the shape of what was left out, so the next</span>
+        <span class="c1"># call can be specific. Two small histograms beat a hundred more rows.</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;not_shown&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">total</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;by_territory&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">r</span><span class="p">[</span><span class="s2">&quot;territory&quot;</span><span class="p">]:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;n&quot;</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;SELECT l.territory, COUNT(*) AS n </span><span class="si">{</span><span class="n">where</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="s2">&quot;GROUP BY l.territory ORDER BY n DESC, l.territory&quot;</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">params</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">}</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;by_status&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">r</span><span class="p">[</span><span class="s2">&quot;status&quot;</span><span class="p">]:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;n&quot;</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;SELECT l.status, COUNT(*) AS n </span><span class="si">{</span><span class="n">where</span><span class="si">}</span><span class="s2"> GROUP BY l.status&quot;</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">params</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">}</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;guidance&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">total</span><span class="si">}</span><span class="s2"> licences match; </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span><span class="si">}</span><span class="s2"> returned. Narrow by territory &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;or status using the counts above, or raise limit up to </span><span class="si">{</span><span class="n">MAX_LIMIT</span><span class="si">}</span><span class="s2"> &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;if you genuinely need every row.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">result</span></code></pre>
 </figure>
 <!-- endinclude -->
 

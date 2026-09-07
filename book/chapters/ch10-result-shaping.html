@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- BEGIN:title --><title>10. Result shaping &mdash; MCP Servers: Zero to Hero</title><!-- END:title -->
+<link rel="stylesheet" href="../assets/book.css">
+<script src="../assets/book.js" defer></script>
+</head>
+<body>
+<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme">◐</button>
+<div class="shell">
+<nav class="sidebar" aria-label="Contents">
+<!-- BEGIN:sidebar -->
+<a class="brand" href="../index.html">MCP Servers: Zero to Hero</a>
+<p class="part">Part 0 — Orientation</p>
+<ol>
+<li><a href="ch01-what-mcp-actually-is.html"><span class="num">1</span>What MCP actually is</a></li>
+<li><a href="ch02-the-protocol-in-one-chapter.html"><span class="num">2</span>The protocol in one chapter</a></li>
+</ol>
+<p class="part">Part 1 — Zero: a server that works</p>
+<ol>
+<li><a href="ch03-first-server.html"><span class="num">3</span>First server</a></li>
+<li><a href="ch04-tools.html"><span class="num">4</span>Tools</a></li>
+<li><a href="ch05-resources.html"><span class="num">5</span>Resources and templates</a></li>
+<li><a href="ch06-prompts.html"><span class="num">6</span>Prompts</a></li>
+<li><a href="ch07-testing-without-an-llm.html"><span class="num">7</span>Testing without an LLM</a></li>
+</ol>
+<p class="part">Part 2 — The client&#x27;s point of view</p>
+<ol>
+<li><a href="ch08-what-the-model-sees.html"><span class="num">8</span>What the model actually sees</a></li>
+<li><a href="ch09-tool-design-is-prompt-engineering.html"><span class="num">9</span>Tool design is prompt engineering</a></li>
+<li><a href="ch10-result-shaping.html" aria-current="page"><span class="num">10</span>Result shaping</a></li>
+</ol>
+<p class="part">Part 3 — Scale</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">11</span>Going HTTP</a></li>
+<li><a aria-disabled="true"><span class="num">12</span>Life after sessions</a></li>
+<li><a aria-disabled="true"><span class="num">13</span>Failure</a></li>
+<li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
+<li><a aria-disabled="true"><span class="num">15</span>Long-running work</a></li>
+<li><a aria-disabled="true"><span class="num">16</span>Observability</a></li>
+<li><a aria-disabled="true"><span class="num">17</span>Identity and multi-tenancy</a></li>
+<li><a aria-disabled="true"><span class="num">18</span>Security</a></li>
+</ol>
+<p class="part">Part 4 — The context problem</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">19</span>Progressive disclosure I: shrink the surface</a></li>
+<li><a aria-disabled="true"><span class="num">20</span>Progressive disclosure II: search then load</a></li>
+<li><a aria-disabled="true"><span class="num">21</span>Progressive disclosure III: resources as the channel</a></li>
+<li><a aria-disabled="true"><span class="num">22</span>jq as a tool</a></li>
+<li><a aria-disabled="true"><span class="num">23</span>Code mode</a></li>
+</ol>
+<p class="part">Part 5 — Shipping</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">24</span>Packaging and distribution</a></li>
+<li><a aria-disabled="true"><span class="num">25</span>Evaluating a server</a></li>
+<li><a aria-disabled="true"><span class="num">26</span>Anti-patterns and a review checklist</a></li>
+</ol>
+<p class="part">Appendices</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">A</span>The same server without FastMCP</a></li>
+<li><a aria-disabled="true"><span class="num">B</span>Migrating 2025-11-25 to 2026-07-28</a></li>
+<li><a aria-disabled="true"><span class="num">C</span>jq cookbook for agent tool results</a></li>
+<li><a aria-disabled="true"><span class="num">D</span>Glossary</a></li>
+</ol>
+<!-- END:sidebar -->
+</nav>
+<main class="content">
+<header class="chapter-head">
+<!-- BEGIN:head -->
+<p class="eyebrow">Part 2 — The client&#x27;s point of view &middot; Chapter 10</p>
+<h1>Result shaping</h1>
+<p class="standfirst">Content versus structured output, pagination, truncation, and the failure mode where one successful call ends the conversation.</p>
+<div class="chapter-meta"><span><b>Status</b> <span class="status status-draft">draft</span></span><span><b>Protocol</b> <code>2026-07-28</code></span><span><b>Code</b> <code>git checkout ch10-result-shaping</code></span></div>
+<!-- END:head -->
+</header>
+<!-- BEGIN:body -->
+<p>Chapter 8 put a number on the problem: one correct call to <code>find_licences</code>
+cost about 10,800 tokens, seven and a half times the entire tool surface it came from. This
+chapter fixes it, and the fix is worth about forty lines.</p>
+
+<p>The result is not just cheaper. It tells the model more than the dump did.</p>
+
+<h2 id="the-dump-was-never-the-answer">The dump was never the answer<a class="anchor" href="#the-dump-was-never-the-answer" aria-label="Link to this section">#</a></h2>
+
+<p>Start with what the user actually asked. "What have we sold on <em>The Winter
+Cartograph</em>?" is a question about coverage — which markets, which rights, what is still
+running. One hundred and eighty rows of licence records contain that answer the way a
+filing cabinet contains a summary.</p>
+
+<p>The naive tool returned every row because that was the only thing it knew how to do. It
+had no total, no notion of "too many", and no way to say <em>you asked for more than you
+want</em>. So it answered the literal question and left the model to do the aggregation, in
+context, at ten thousand tokens.</p>
+
+<h2 id="three-things-every-list-returning-tool-needs">Three things every list-returning tool needs<a class="anchor" href="#three-things-every-list-returning-tool-needs" aria-label="Link to this section">#</a></h2>
+
+<p><strong>A total.</strong> One cheap <code>COUNT(*)</code>, and suddenly the model knows
+whether it is looking at everything or at a fragment. This is the single highest-value
+field you can add to a result and almost nobody returns it.</p>
+
+<p><strong>A default limit.</strong> Not a maximum — a default. An optional
+<code>limit</code> with no default gets omitted; a <code>limit</code> that defaults to 20
+means the expensive path has to be chosen deliberately.</p>
+
+<p><strong>The shape of what was left out.</strong> This is the part people skip, and it is
+what turns a truncated result from a frustration into a next step.</p>
+
+<!-- include: code/ledger/src/ledger/tools.py lang=python region=find_licences -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/tools.py</span><span>region find_licences</span></figcaption>
+<pre class="highlight"><code><span class="n">DEFAULT_LIMIT</span> <span class="o">=</span> <span class="mi">20</span>
+<span class="n">MAX_LIMIT</span> <span class="o">=</span> <span class="mi">100</span>
+
+
+<span class="nd">@mcp</span><span class="o">.</span><span class="n">tool</span><span class="p">(</span><span class="n">annotations</span><span class="o">=</span><span class="n">READ_ONLY</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">find_licences</span><span class="p">(</span>
+    <span class="n">title_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">territory</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">status</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;active&quot;</span><span class="p">,</span> <span class="s2">&quot;expired&quot;</span><span class="p">,</span> <span class="s2">&quot;pending&quot;</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">DEFAULT_LIMIT</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Licences attached to a title, newest window first.</span>
+
+<span class="sd">    Returns a page of licences plus the total that matched. When more matched</span>
+<span class="sd">    than were returned, the result also carries counts by territory and status</span>
+<span class="sd">    so you can narrow without guessing.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        title_id: a title identifier such as T-1042.</span>
+<span class="sd">        territory: ISO 3166-1 alpha-2 code, e.g. GB. Omit for every territory —</span>
+<span class="sd">            a widely-licensed title can match well over a hundred.</span>
+<span class="sd">        status: active, expired or pending. Omit for all three.</span>
+<span class="sd">        limit: rows to return, 1-100. The default of 20 is usually enough to</span>
+<span class="sd">            answer a question; ask for more only when you know you need it.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">limit</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">limit</span><span class="p">,</span> <span class="n">MAX_LIMIT</span><span class="p">))</span>
+    <span class="n">where</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        FROM licences l</span>
+<span class="s2">        JOIN licensees e ON e.id = l.licensee_id</span>
+<span class="s2">        WHERE l.title_id = :title_id</span>
+<span class="s2">          AND (:territory IS NULL OR l.territory = :territory)</span>
+<span class="s2">          AND (:status IS NULL OR l.status = :status)</span>
+<span class="s2">    &quot;&quot;&quot;</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;title_id&quot;</span><span class="p">:</span> <span class="n">title_id</span><span class="p">,</span> <span class="s2">&quot;territory&quot;</span><span class="p">:</span> <span class="n">territory</span><span class="p">,</span> <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="n">status</span><span class="p">}</span>
+
+    <span class="c1"># Count first. A total costs one cheap query and is the single most useful</span>
+    <span class="c1"># thing you can hand a model that has asked too broad a question.</span>
+    <span class="n">total</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">one</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;SELECT COUNT(*) AS n </span><span class="si">{</span><span class="n">where</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">)[</span><span class="s2">&quot;n&quot;</span><span class="p">]</span>
+
+    <span class="n">rows</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">        SELECT l.id, l.territory, l.rights, l.exclusive,</span>
+<span class="s2">               l.window_start, l.window_end, l.status,</span>
+<span class="s2">               e.name AS licensee, l.agreement_id</span>
+<span class="s2">        </span><span class="si">{</span><span class="n">where</span><span class="si">}</span>
+<span class="s2">        ORDER BY l.window_start DESC, l.id</span>
+<span class="s2">        LIMIT :limit</span>
+<span class="s2">        &quot;&quot;&quot;</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">params</span><span class="p">,</span>
+        <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">result</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;total&quot;</span><span class="p">:</span> <span class="n">total</span><span class="p">,</span> <span class="s2">&quot;returned&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">),</span> <span class="s2">&quot;licences&quot;</span><span class="p">:</span> <span class="n">rows</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">total</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">):</span>
+        <span class="c1"># Not the rows themselves — the shape of what was left out, so the next</span>
+        <span class="c1"># call can be specific. Two small histograms beat a hundred more rows.</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;not_shown&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">total</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;by_territory&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">r</span><span class="p">[</span><span class="s2">&quot;territory&quot;</span><span class="p">]:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;n&quot;</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;SELECT l.territory, COUNT(*) AS n </span><span class="si">{</span><span class="n">where</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="s2">&quot;GROUP BY l.territory ORDER BY n DESC, l.territory&quot;</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">params</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">}</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;by_status&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">r</span><span class="p">[</span><span class="s2">&quot;status&quot;</span><span class="p">]:</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;n&quot;</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;SELECT l.status, COUNT(*) AS n </span><span class="si">{</span><span class="n">where</span><span class="si">}</span><span class="s2"> GROUP BY l.status&quot;</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">params</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">}</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">&quot;guidance&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">total</span><span class="si">}</span><span class="s2"> licences match; </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span><span class="si">}</span><span class="s2"> returned. Narrow by territory &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;or status using the counts above, or raise limit up to </span><span class="si">{</span><span class="n">MAX_LIMIT</span><span class="si">}</span><span class="s2"> &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;if you genuinely need every row.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">result</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>The two histograms are the whole idea. A hundred and sixty rows were withheld;
+<code>{"CA": 11, "KR": 10, "DE": 9, ...}</code> and
+<code>{"active": 63, "expired": 117}</code> describe them in about three hundred
+characters. A model that wanted German coverage now knows there are nine rows and can ask
+for exactly those. A model that wanted current deals knows that two thirds of what it asked
+for has expired.</p>
+
+<p>Note also what happens when nothing was truncated: none of it appears. A complete result
+is <code>total</code>, <code>returned</code> and the rows. Do not make people pay for advice
+they do not need — there is a test for that.</p>
+
+<h2 id="the-measurement">The measurement<a class="anchor" href="#the-measurement" aria-label="Link to this section">#</a></h2>
+
+<!-- include: code/labs/token-audit/reports/bounded.md lang=markdown region=call_cost title=after -->
+<figure class="snippet">
+<figcaption><span class="path">after</span><span>region call_cost</span></figcaption>
+<pre class="highlight"><code>| call | chars | tokens | |
+|---|---:|---:|---|
+| get_title on the widest title | 289 | 80 | 1 row(s) |
+| find_licences, no filter | 4,872 | 1,353 | 20 of 180 rows |
+| find_licences, one territory | 691 | 192 | 3 row(s), complete |
+| find_licences, active only | 4,790 | 1,331 | 20 of 63 rows |
+| search_titles, 20 results | 2,478 | 688 | 20 row(s) |
+| licence_detail, one licence | 618 | 172 | 1 row(s) |</code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Against chapter 8's numbers:</p>
+
+<div class="table-scroll">
+<table>
+<thead><tr><th>Call</th><th>Naive</th><th>Paged</th><th></th></tr></thead>
+<tbody>
+<tr><td><code>find_licences</code>, no filter</td><td>10,800 tokens</td><td>1,353 tokens</td><td>8.0× smaller</td></tr>
+<tr><td><code>find_licences</code>, active only</td><td>3,770 tokens</td><td>1,331 tokens</td><td>2.8× smaller</td></tr>
+<tr><td><code>find_licences</code>, one territory</td><td>181 tokens</td><td>192 tokens</td><td>6% larger</td></tr>
+<tr><td>Fixed tool surface</td><td>1,435 tokens</td><td>1,528 tokens</td><td>6.5% larger</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Both increases are real and both are worth naming. The narrow call grew by eleven tokens
+because it now carries <code>total</code> and <code>returned</code>. The surface grew by
+ninety-three because the tool gained a parameter and a description that warns about
+breadth.</p>
+
+<p>You pay a fixed 6.5% and a rounding error on cheap calls, to remove nine and a half
+thousand tokens from the expensive one. That is the trade, stated honestly, and it is not
+close.</p>
+
+<h2 id="the-budget-test-did-its-job">The budget test did its job<a class="anchor" href="#the-budget-test-did-its-job" aria-label="Link to this section">#</a></h2>
+
+<p>Chapter 9 put a ceiling on any single tool definition at 1,200 characters. Making this
+change pushed <code>find_licences</code> to 1,226 and the suite went red.</p>
+
+<pre class="term">FAILED tests/test_budget.py::test_no_single_tool_dominates
+AssertionError: find_licences is 1,226 characters — usually a schema that
+grew a nested object or a long enum</pre>
+
+<p>That is the test working, not the test being annoying. The budget was raised to 1,400 in
+the same commit, with the reason written beside it in the source. Six months from now the
+question "why is this 1,400?" has an answer, and the next person to push against it has to
+write one too.</p>
+
+<h2 id="cursors-and-when-you-need-them">Cursors, and when you need them<a class="anchor" href="#cursors-and-when-you-need-them" aria-label="Link to this section">#</a></h2>
+
+<p>What is described above is a limit, not pagination. There is no cursor and no way to ask
+for rows 21 to 40.</p>
+
+<p>That is deliberate. A model that has been told <em>180 matched, here are 20, here is
+where the rest are</em> should almost always narrow rather than page. Paging through 180
+licences twenty at a time is nine round trips and the same ten thousand tokens, arriving
+more slowly.</p>
+
+<p>Add a cursor when the caller genuinely needs completeness — an export, a reconciliation,
+a job that has to touch every row. Then it is a real requirement rather than a fallback for
+a query that should have been narrowed. When you do add one, make it opaque: an encoded
+position, not an offset, so the meaning of "page 3" cannot drift under a concurrent write.
+And note that a cursor is state, which after 2026-07-28 is state you mint and hand back as
+an argument. Chapter 12 is entirely about doing that well.</p>
+
+<h2 id="truncating-text-not-rows">Truncating text, not rows<a class="anchor" href="#truncating-text-not-rows" aria-label="Link to this section">#</a></h2>
+
+<p>Everything above is about lists. The other common oversized result is one large
+document — a contract, a log, a report — and the instinct is to cut it at N characters and
+append an ellipsis.</p>
+
+<p>Do better, cheaply. Say how much was cut and in what units. Cut on a structural boundary
+so the fragment is still parseable. And return an address for the rest — a resource URI, an
+identifier, something the model can follow — so truncation is a door rather than a wall.
+Chapter 21 builds the general version of that for a whole corpus.</p>
+
+<div class="callout warn">
+<span class="label">Never truncate silently</span>
+<p>A result that has been cut without saying so is worse than an error. The model will
+reason confidently over a fragment it believes is complete, and the user will get a
+specific, plausible, wrong answer. If you take something out, say so in the payload.</p>
+</div>
+
+<h2 id="errors-are-results-too">Errors are results too<a class="anchor" href="#errors-are-results-too" aria-label="Link to this section">#</a></h2>
+
+<p>The same discipline applies to failure. "Too many results" wastes the call; "4,182
+licences match; narrow by territory or status" costs a dozen tokens and ends the loop. A
+refusal that names the number and the lever is a cheap result, not a failed one.</p>
+
+<h2 id="what-part-2-established">What Part 2 established<a class="anchor" href="#what-part-2-established" aria-label="Link to this section">#</a></h2>
+
+<p>Your server is a prompt, and it has a bill. The fixed part is your tool surface — about
+1,500 tokens for <code>ledger</code>, measurable, budgeted and enforced in CI. The variable
+part is what your tools return, and it dominates: one careless call outweighs every
+description you might have trimmed.</p>
+
+<p>Three habits carry into the rest of the book. Measure before optimising. Return totals
+and the shape of what was withheld, not just rows. And when something is too big, say so in
+a way that names the next move.</p>
+
+<p>Part 3 changes the question from what a call costs to what happens when there are many
+of them, from many clients, against a server that the protocol no longer allows to remember
+anything.</p>
+<!-- END:body -->
+<!-- BEGIN:pager -->
+<nav class="pager" aria-label="Chapter">
+<a class="prev" href="ch09-tool-design-is-prompt-engineering.html"><span class="dir">Previous</span><span class="name">9. Tool design is prompt engineering</span></a>
+<span class="spacer"></span>
+</nav>
+<!-- END:pager -->
+</main>
+</div>
+</body>
+</html>

@@ -96,7 +96,7 @@
           "slug": "ch10-result-shaping",
           "title": "Result shaping",
           "standfirst": "Content versus structured output, pagination, truncation, and the failure mode where one successful call ends the conversation.",
-          "status": "planned",
+          "status": "draft",
           "tag": "ch10-result-shaping"
         }
       ]

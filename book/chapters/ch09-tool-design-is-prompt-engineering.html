@@ -30,7 +30,7 @@
 <ol>
 <li><a href="ch08-what-the-model-sees.html"><span class="num">8</span>What the model actually sees</a></li>
 <li><a href="ch09-tool-design-is-prompt-engineering.html" aria-current="page"><span class="num">9</span>Tool design is prompt engineering</a></li>
-<li><a aria-disabled="true"><span class="num">10</span>Result shaping</a></li>
+<li><a href="ch10-result-shaping.html"><span class="num">10</span>Result shaping</a></li>
 </ol>
 <p class="part">Part 3 — Scale</p>
 <ol>
@@ -222,7 +222,11 @@ honestly annotated for both.</p>
 <figcaption><span class="path">budgets as tripwires</span><span>lines 17–45</span></figcaption>
 <pre class="highlight"><code><span class="c1"># do not, and by then someone should be reading chapter 19 instead.</span>
 <span class="n">TOOLS_LIST_BUDGET</span> <span class="o">=</span> <span class="mi">4_000</span>
-<span class="n">ONE_TOOL_BUDGET</span> <span class="o">=</span> <span class="mi">1_200</span>
+<span class="c1"># Raised from 1,200 in the chapter 10 commit. find_licences went to 1,226</span>
+<span class="c1"># characters when it gained a limit parameter, a paged return shape and a</span>
+<span class="c1"># description that warns about breadth — and that trade bought an eight-fold</span>
+<span class="c1"># reduction in what the tool actually returns. Argued, not reflexive.</span>
+<span class="n">ONE_TOOL_BUDGET</span> <span class="o">=</span> <span class="mi">1_400</span>
 <span class="n">DESCRIPTION_FLOOR</span> <span class="o">=</span> <span class="mi">25</span>
 
 
@@ -244,11 +248,7 @@ honestly annotated for both.</p>
 
 <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_no_single_tool_dominates</span><span class="p">(</span><span class="n">client</span><span class="p">):</span>
     <span class="k">async</span> <span class="k">with</span> <span class="n">client</span><span class="p">:</span>
-        <span class="k">for</span> <span class="n">tool</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">list_tools</span><span class="p">():</span>
-            <span class="n">size</span> <span class="o">=</span> <span class="n">wire_size</span><span class="p">(</span><span class="n">tool</span><span class="p">)</span>
-            <span class="k">assert</span> <span class="n">size</span> <span class="o">&lt;=</span> <span class="n">ONE_TOOL_BUDGET</span><span class="p">,</span> <span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">tool</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> is </span><span class="si">{</span><span class="n">size</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> characters — usually a schema that &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;grew a nested object or a long enum&quot;</span></code></pre>
+        <span class="k">for</span> <span class="n">tool</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">list_tools</span><span class="p">():</span></code></pre>
 </figure>
 <!-- endinclude -->
 
@@ -274,7 +274,7 @@ one correct call.</p>
 <!-- BEGIN:pager -->
 <nav class="pager" aria-label="Chapter">
 <a class="prev" href="ch08-what-the-model-sees.html"><span class="dir">Previous</span><span class="name">8. What the model actually sees</span></a>
-<span class="spacer"></span>
+<a class="next" href="ch10-result-shaping.html"><span class="dir">Next</span><span class="name">10. Result shaping</span></a>
 </nav>
 <!-- END:pager -->
 </main>
