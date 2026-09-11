@@ -13,9 +13,12 @@ from __future__ import annotations
 
 import json
 
-# Roughly 40% above where the surface sits today. A single new tool fits; four
-# do not, and by then someone should be reading chapter 19 instead.
-TOOLS_LIST_BUDGET = 4_000
+# Raised from 4,000 in the chapter 12 commit: the scan pair added 1,499
+# characters and took the surface to 4,472. Worth arguing about — two tools for
+# one capability is the most expensive shape there is, and chapter 12 says why
+# it is still the right call here. The next increase should be harder than this
+# one, which is the whole reason the number is written down.
+TOOLS_LIST_BUDGET = 5_000
 # Raised from 1,200 in the chapter 10 commit. find_licences went to 1,226
 # characters when it gained a limit parameter, a paged return shape and a
 # description that warns about breadth — and that trade bought an eight-fold

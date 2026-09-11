@@ -11,7 +11,15 @@ from fastmcp.exceptions import ToolError
 
 from ledger import db
 
-EXPECTED_TOOLS = {"search_titles", "get_title", "find_licences", "licence_detail"}
+EXPECTED_TOOLS = {
+    "search_titles",
+    "get_title",
+    "find_licences",
+    "licence_detail",
+    # chapter 12
+    "open_licence_scan",
+    "read_licence_scan",
+}
 
 
 # region: surface

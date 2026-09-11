@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from ledger import prompts as _prompts  # noqa: F401  (registers prompts)
 from ledger import resources as _resources  # noqa: F401  (registers resources)
+from ledger import scans as _scans  # noqa: F401  (registers the scan tools)
 from ledger import tools as _tools  # noqa: F401  (registers tools)
 from ledger.app import mcp
 
