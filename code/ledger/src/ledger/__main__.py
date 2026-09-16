@@ -19,23 +19,10 @@ DEFAULT_PORT = 8000
 
 # region: http_app
 def http_app(stateless: bool = True):
-    """The ASGI app, built explicitly rather than through `mcp.run()`.
+    """The ASGI app. Chapter 11 moved the detail into ledger.http."""
+    from ledger.http import build
 
-    Two reasons, and the second one is a trap worth knowing about.
-
-    First, an HTTP server you intend to operate wants its own app: health
-    checks, middleware, and a place to mount things. Chapter 11 adds all three
-    here.
-
-    Second, `stateless_http` defaults to False in FastMCP 4.0.3 — the app still
-    expects the pre-2026-07-28 session handshake and rejects a plain request
-    with "Missing session ID". Passing the flag through `mcp.run()` (as either
-    `stateless_http=` or `stateless=`) does not reach the app in that version;
-    passing it to `http_app()` does. The current protocol has no sessions at
-    all, so a server written against it must opt out, and must check that the
-    opt-out actually took effect.
-    """
-    return mcp.http_app(stateless_http=stateless)
+    return build(stateless=stateless)
 # endregion: http_app
 
 
