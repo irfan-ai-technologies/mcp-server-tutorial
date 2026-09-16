@@ -52,6 +52,7 @@ async def test_re_reading_a_handle_returns_the_same_page(client):
     assert [r["id"] for r in first["licences"]] == [r["id"] for r in again["licences"]]
 
 
+# region: another_instance
 async def test_a_handle_survives_the_server_it_came_from(client):
     """The point of the exercise. A handle minted by one instance is honoured by
     another that has never heard of it — here, a freshly constructed server
@@ -77,6 +78,7 @@ async def test_a_handle_survives_the_server_it_came_from(client):
         ).data
 
     assert page["returned"] > 0
+# endregion: another_instance
 
 
 async def test_opening_a_scan_on_nothing_says_what_to_do(client):

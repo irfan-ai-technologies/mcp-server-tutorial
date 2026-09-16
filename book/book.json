@@ -118,7 +118,7 @@
           "slug": "ch12-life-after-sessions",
           "title": "Life after sessions",
           "standfirst": "Server-minted handles: shape, TTL, storage, revocation, idempotency keys \u2014 and how to stop a handle becoming a session by another name.",
-          "status": "planned",
+          "status": "draft",
           "tag": "ch12-state-handles"
         },
         {

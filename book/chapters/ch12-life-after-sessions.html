@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- BEGIN:title --><title>12. Life after sessions &mdash; MCP Servers: Zero to Hero</title><!-- END:title -->
+<link rel="stylesheet" href="../assets/book.css">
+<script src="../assets/book.js" defer></script>
+</head>
+<body>
+<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme">◐</button>
+<div class="shell">
+<nav class="sidebar" aria-label="Contents">
+<!-- BEGIN:sidebar -->
+<a class="brand" href="../index.html">MCP Servers: Zero to Hero</a>
+<p class="part">Part 0 — Orientation</p>
+<ol>
+<li><a href="ch01-what-mcp-actually-is.html"><span class="num">1</span>What MCP actually is</a></li>
+<li><a href="ch02-the-protocol-in-one-chapter.html"><span class="num">2</span>The protocol in one chapter</a></li>
+</ol>
+<p class="part">Part 1 — Zero: a server that works</p>
+<ol>
+<li><a href="ch03-first-server.html"><span class="num">3</span>First server</a></li>
+<li><a href="ch04-tools.html"><span class="num">4</span>Tools</a></li>
+<li><a href="ch05-resources.html"><span class="num">5</span>Resources and templates</a></li>
+<li><a href="ch06-prompts.html"><span class="num">6</span>Prompts</a></li>
+<li><a href="ch07-testing-without-an-llm.html"><span class="num">7</span>Testing without an LLM</a></li>
+</ol>
+<p class="part">Part 2 — The client&#x27;s point of view</p>
+<ol>
+<li><a href="ch08-what-the-model-sees.html"><span class="num">8</span>What the model actually sees</a></li>
+<li><a href="ch09-tool-design-is-prompt-engineering.html"><span class="num">9</span>Tool design is prompt engineering</a></li>
+<li><a href="ch10-result-shaping.html"><span class="num">10</span>Result shaping</a></li>
+</ol>
+<p class="part">Part 3 — Scale</p>
+<ol>
+<li><a href="ch11-going-http.html"><span class="num">11</span>Going HTTP</a></li>
+<li><a href="ch12-life-after-sessions.html" aria-current="page"><span class="num">12</span>Life after sessions</a></li>
+<li><a aria-disabled="true"><span class="num">13</span>Failure</a></li>
+<li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
+<li><a aria-disabled="true"><span class="num">15</span>Long-running work</a></li>
+<li><a aria-disabled="true"><span class="num">16</span>Observability</a></li>
+<li><a aria-disabled="true"><span class="num">17</span>Identity and multi-tenancy</a></li>
+<li><a aria-disabled="true"><span class="num">18</span>Security</a></li>
+</ol>
+<p class="part">Part 4 — The context problem</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">19</span>Progressive disclosure I: shrink the surface</a></li>
+<li><a aria-disabled="true"><span class="num">20</span>Progressive disclosure II: search then load</a></li>
+<li><a aria-disabled="true"><span class="num">21</span>Progressive disclosure III: resources as the channel</a></li>
+<li><a aria-disabled="true"><span class="num">22</span>jq as a tool</a></li>
+<li><a aria-disabled="true"><span class="num">23</span>Code mode</a></li>
+</ol>
+<p class="part">Part 5 — Shipping</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">24</span>Packaging and distribution</a></li>
+<li><a aria-disabled="true"><span class="num">25</span>Evaluating a server</a></li>
+<li><a aria-disabled="true"><span class="num">26</span>Anti-patterns and a review checklist</a></li>
+</ol>
+<p class="part">Appendices</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">A</span>The same server without FastMCP</a></li>
+<li><a aria-disabled="true"><span class="num">B</span>Migrating 2025-11-25 to 2026-07-28</a></li>
+<li><a aria-disabled="true"><span class="num">C</span>jq cookbook for agent tool results</a></li>
+<li><a aria-disabled="true"><span class="num">D</span>Glossary</a></li>
+</ol>
+<!-- END:sidebar -->
+</nav>
+<main class="content">
+<header class="chapter-head">
+<!-- BEGIN:head -->
+<p class="eyebrow">Part 3 — Scale &middot; Chapter 12</p>
+<h1>Life after sessions</h1>
+<p class="standfirst">Server-minted handles: shape, TTL, storage, revocation, idempotency keys — and how to stop a handle becoming a session by another name.</p>
+<div class="chapter-meta"><span><b>Status</b> <span class="status status-draft">draft</span></span><span><b>Protocol</b> <code>2026-07-28</code></span><span><b>Code</b> <code>git checkout ch12-state-handles</code></span></div>
+<!-- END:head -->
+</header>
+<!-- BEGIN:body -->
+<p>Here is the bill for chapter 11. The protocol used to give you a session — somewhere to
+put the fact that this client, in this conversation, was halfway through something. It does
+not any more, and nothing was put in its place except a technique.</p>
+
+<div class="callout spec">
+<span class="label">Specification 2026-07-28</span>
+<p>Protocol-level sessions are removed. "Servers that need cross-call state use explicit,
+server-minted handles passed as ordinary tool arguments."</p>
+</div>
+
+<p>One sentence in a changelog, and an architectural decision underneath it.</p>
+
+<h2 id="two-kinds-of-handle">Two kinds of handle<a class="anchor" href="#two-kinds-of-handle" aria-label="Link to this section">#</a></h2>
+
+<p>The word "handle" covers two designs that behave completely differently, and picking the
+wrong one is how a stateless server quietly becomes a stateful one.</p>
+
+<div class="table-scroll">
+<table>
+<thead><tr><th></th><th>Signed, self-contained</th><th>Stored</th></tr></thead>
+<tbody>
+<tr><td>What the token is</td><td>The state itself, signed</td><td>A key into a shared store</td></tr>
+<tr><td>Server storage</td><td>None</td><td>A row, with a TTL</td></tr>
+<tr><td>Works on any instance</td><td>Immediately</td><td>Once the store is shared and consistent</td></tr>
+<tr><td>Size limit</td><td>What fits in an argument</td><td>Unbounded</td></tr>
+<tr><td>Snapshot isolation</td><td>No — describes a query</td><td>Yes — materialised</td></tr>
+<tr><td>Revocation</td><td>Only by expiry or key rotation</td><td>Delete the row</td></tr>
+<tr><td>What it costs you</td><td>Discipline about size</td><td>A store, eviction, and a way for instances to disagree</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Most servers reach for the stored version because it is the one that resembles a session,
+and most of them needed the signed one. If the state is small and describes <em>what the
+caller asked for</em> rather than <em>what the answer was</em>, signing it is strictly
+better: there is nothing to evict, nothing to replicate, and no instance that can disagree
+with another.</p>
+
+<h2 id="signing-one">Signing one<a class="anchor" href="#signing-one" aria-label="Link to this section">#</a></h2>
+
+<p><code>ledger</code>'s handle is <code>kind.payload.signature</code> — a URL-safe base64
+JSON body with an expiry, and an HMAC over it:</p>
+
+<!-- include: code/ledger/src/ledger/handles.py lang=python region=mint -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/handles.py</span><span>region mint</span></figcaption>
+<pre class="highlight"><code><span class="k">def</span><span class="w"> </span><span class="nf">mint</span><span class="p">(</span><span class="n">kind</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">ttl_seconds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">900</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Issue a handle carrying `data`, valid for `ttl_seconds`.</span>
+
+<span class="sd">    The expiry is inside the signed body, so it cannot be extended by the holder</span>
+<span class="sd">    and no server has to remember when this was issued.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">body</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">data</span><span class="p">,</span> <span class="s2">&quot;kind&quot;</span><span class="p">:</span> <span class="n">kind</span><span class="p">,</span> <span class="s2">&quot;exp&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">())</span> <span class="o">+</span> <span class="n">ttl_seconds</span><span class="p">}</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="n">_b64</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">body</span><span class="p">,</span> <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;:&quot;</span><span class="p">),</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">())</span>
+    <span class="n">signature</span> <span class="o">=</span> <span class="n">_b64</span><span class="p">(</span><span class="n">hmac</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="n">secret</span><span class="p">(),</span> <span class="n">payload</span><span class="o">.</span><span class="n">encode</span><span class="p">(),</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">)</span><span class="o">.</span><span class="n">digest</span><span class="p">())</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">kind</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">payload</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">signature</span><span class="si">}</span><span class="s2">&quot;</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">read</span><span class="p">(</span><span class="n">token</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">expected_kind</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Verify a handle and return what it carries.</span>
+
+<span class="sd">    Every failure is a ToolError with a message the model can act on, because</span>
+<span class="sd">    every one of them is recoverable by starting again — and a model that is</span>
+<span class="sd">    told &quot;expired, open a new scan&quot; will do that, where one told &quot;invalid</span>
+<span class="sd">    token&quot; will retry the same token.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">kind</span><span class="p">,</span> <span class="n">payload</span><span class="p">,</span> <span class="n">signature</span> <span class="o">=</span> <span class="n">token</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">ToolError</span><span class="p">(</span>
+            <span class="s2">&quot;malformed handle; handles come from open_licence_scan and are &quot;</span>
+            <span class="s2">&quot;passed back unchanged&quot;</span>
+        <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="kc">None</span>
+
+    <span class="n">expected</span> <span class="o">=</span> <span class="n">_b64</span><span class="p">(</span><span class="n">hmac</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="n">secret</span><span class="p">(),</span> <span class="n">payload</span><span class="o">.</span><span class="n">encode</span><span class="p">(),</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">)</span><span class="o">.</span><span class="n">digest</span><span class="p">())</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">hmac</span><span class="o">.</span><span class="n">compare_digest</span><span class="p">(</span><span class="n">signature</span><span class="p">,</span> <span class="n">expected</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="n">ToolError</span><span class="p">(</span><span class="s2">&quot;handle failed verification; open a new scan&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">kind</span> <span class="o">!=</span> <span class="n">expected_kind</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">ToolError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;this is a </span><span class="si">{</span><span class="n">kind</span><span class="si">!r}</span><span class="s2"> handle, but a </span><span class="si">{</span><span class="n">expected_kind</span><span class="si">!r}</span><span class="s2"> handle is needed&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">body</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">_unb64</span><span class="p">(</span><span class="n">payload</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">body</span><span class="p">[</span><span class="s2">&quot;exp&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="n">ToolError</span><span class="p">(</span>
+            <span class="s2">&quot;handle expired; open a new scan. Handles last 15 minutes so that &quot;</span>
+            <span class="s2">&quot;no instance has to remember them&quot;</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">body</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Three decisions in there are worth defending.</p>
+
+<p><strong>The body is readable.</strong> A client can decode a handle and see what is in it.
+That is fine — nothing secret goes inside — and it is better than the alternative, because a
+handle you can read is a handle you can debug. What the client cannot do is change one.</p>
+
+<p><strong>The expiry is inside the signature.</strong> So it cannot be extended by the
+holder, and no server has to remember when anything was issued. Expiry becomes arithmetic
+rather than bookkeeping.</p>
+
+<p><strong>The kind is checked.</strong> A scan handle must not be accepted where an export
+handle is expected, even though both verify against the same key. Kind confusion is how one
+feature's token silently becomes another feature's authorisation, and the check costs one
+comparison.</p>
+
+<h2 id="the-key-is-not-a-per-process-secret">The key is not a per-process secret<a class="anchor" href="#the-key-is-not-a-per-process-secret" aria-label="Link to this section">#</a></h2>
+
+<!-- include: code/ledger/src/ledger/handles.py lang=python region=secret -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/handles.py</span><span>region secret</span></figcaption>
+<pre class="highlight"><code><span class="n">DEV_SECRET</span> <span class="o">=</span> <span class="s2">&quot;ledger-dev-secret-not-for-anything-real&quot;</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">secret</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The signing key.</span>
+
+<span class="sd">    A per-process random key would be worse than this constant, not better: it</span>
+<span class="sd">    would invalidate every outstanding handle on deploy and make two instances</span>
+<span class="sd">    disagree, which is precisely the failure statelessness was meant to remove.</span>
+<span class="sd">    In production this comes from the environment and is shared by every</span>
+<span class="sd">    instance, like any other signing key.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;LEDGER_HANDLE_SECRET&quot;</span><span class="p">,</span> <span class="n">DEV_SECRET</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">()</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>A random key generated at startup feels more secure and is worse in every way that
+matters here. Every deploy would invalidate every outstanding handle, and two instances
+would reject each other's tokens — which is precisely the failure that losing sessions was
+supposed to remove. It is a shared signing key, like any other shared signing key, and it
+rotates the way those do: accept the previous one for a window, then stop.</p>
+
+<h2 id="a-handle-that-is-a-continuation">A handle that is a continuation<a class="anchor" href="#a-handle-that-is-a-continuation" aria-label="Link to this section">#</a></h2>
+
+<p>Chapter 10 deliberately gave <code>find_licences</code> a limit and no cursor, arguing
+that a model told "180 matched, here are 20, here is where the rest are" should narrow rather
+than page. That holds for questions. It does not hold for reconciliation, where missing a row
+is a defect rather than an inconvenience.</p>
+
+<!-- include: code/ledger/src/ledger/scans.py lang=python region=read_scan -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/scans.py</span><span>region read_scan</span></figcaption>
+<pre class="highlight"><code><span class="nd">@mcp</span><span class="o">.</span><span class="n">tool</span><span class="p">(</span><span class="n">annotations</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;readOnlyHint&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;idempotentHint&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">})</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">read_licence_scan</span><span class="p">(</span><span class="n">handle</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Read the next page of a scan and get the handle for the page after it.</span>
+
+<span class="sd">    Re-reading the same handle returns the same page: the position is in the</span>
+<span class="sd">    handle you were given, not on the server. That is what makes a retry after a</span>
+<span class="sd">    dropped connection safe.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        handle: the handle from open_licence_scan, or from the previous call.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">state</span> <span class="o">=</span> <span class="n">handles</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">handle</span><span class="p">,</span> <span class="n">SCAN</span><span class="p">)</span>
+    <span class="n">rows</span> <span class="o">=</span> <span class="n">_page</span><span class="p">(</span><span class="n">state</span><span class="p">[</span><span class="s2">&quot;title_id&quot;</span><span class="p">],</span> <span class="n">state</span><span class="p">[</span><span class="s2">&quot;territory&quot;</span><span class="p">],</span> <span class="n">state</span><span class="p">[</span><span class="s2">&quot;after&quot;</span><span class="p">])</span>
+
+    <span class="n">done</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">PAGE</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;licences&quot;</span><span class="p">:</span> <span class="n">rows</span><span class="p">,</span>
+        <span class="s2">&quot;returned&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">),</span>
+        <span class="s2">&quot;done&quot;</span><span class="p">:</span> <span class="n">done</span><span class="p">,</span>
+        <span class="s2">&quot;handle&quot;</span><span class="p">:</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">done</span>
+        <span class="k">else</span> <span class="n">handles</span><span class="o">.</span><span class="n">mint</span><span class="p">(</span>
+            <span class="n">SCAN</span><span class="p">,</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;title_id&quot;</span><span class="p">:</span> <span class="n">state</span><span class="p">[</span><span class="s2">&quot;title_id&quot;</span><span class="p">],</span>
+                <span class="s2">&quot;territory&quot;</span><span class="p">:</span> <span class="n">state</span><span class="p">[</span><span class="s2">&quot;territory&quot;</span><span class="p">],</span>
+                <span class="s2">&quot;after&quot;</span><span class="p">:</span> <span class="n">rows</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="s2">&quot;id&quot;</span><span class="p">],</span>
+            <span class="p">},</span>
+        <span class="p">),</span>
+    <span class="p">}</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Each page returns the handle for the page after it. The position lives in the token, not
+on the server, and that single property is what makes the whole thing work: re-reading a
+handle returns the same page, so a client that retries after a dropped stream sees the rows
+again rather than skipping them.</p>
+
+<p>Compare that with an offset kept server-side, where a retry advances the cursor and the
+rows in between are silently lost. The client cannot tell. Nothing errors. You find out at
+the end of the quarter when the reconciliation is short.</p>
+
+<h2 id="proving-it-survives-the-instance-that-issued-it">Proving it survives the instance that issued it<a class="anchor" href="#proving-it-survives-the-instance-that-issued-it" aria-label="Link to this section">#</a></h2>
+
+<p>The claim worth testing is not that the handle round-trips. It is that a handle minted by
+one server is honoured by another that has never heard of it:</p>
+
+<!-- include: code/ledger/tests/test_scans.py lang=python region=another_instance -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/tests/test_scans.py</span><span>region another_instance</span></figcaption>
+<pre class="highlight"><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_a_handle_survives_the_server_it_came_from</span><span class="p">(</span><span class="n">client</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The point of the exercise. A handle minted by one instance is honoured by</span>
+<span class="sd">    another that has never heard of it — here, a freshly constructed server</span>
+<span class="sd">    object standing in for a second process behind a load balancer.&quot;&quot;&quot;</span>
+    <span class="n">widest</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">WIDEST</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">client</span><span class="p">:</span>
+        <span class="n">handle</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span>
+                <span class="s2">&quot;open_licence_scan&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;title_id&quot;</span><span class="p">:</span> <span class="n">widest</span><span class="p">[</span><span class="s2">&quot;title_id&quot;</span><span class="p">]}</span>
+            <span class="p">)</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;handle&quot;</span><span class="p">]</span>
+
+    <span class="kn">import</span><span class="w"> </span><span class="nn">importlib</span>
+
+    <span class="kn">from</span><span class="w"> </span><span class="nn">fastmcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">Client</span>
+
+    <span class="kn">import</span><span class="w"> </span><span class="nn">ledger.server</span>
+
+    <span class="n">other_instance</span> <span class="o">=</span> <span class="n">Client</span><span class="p">(</span><span class="n">importlib</span><span class="o">.</span><span class="n">reload</span><span class="p">(</span><span class="n">ledger</span><span class="o">.</span><span class="n">server</span><span class="p">)</span><span class="o">.</span><span class="n">mcp</span><span class="p">)</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">other_instance</span> <span class="k">as</span> <span class="n">elsewhere</span><span class="p">:</span>
+        <span class="n">page</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="k">await</span> <span class="n">elsewhere</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s2">&quot;read_licence_scan&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;handle&quot;</span><span class="p">:</span> <span class="n">handle</span><span class="p">})</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">data</span>
+
+    <span class="k">assert</span> <span class="n">page</span><span class="p">[</span><span class="s2">&quot;returned&quot;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Reloading the module is a stand-in for a second process behind a load balancer. It is
+crude and it catches the real failure, which is someone quietly adding a dictionary to hold
+"open scans" — that test goes red the moment the handle depends on the instance.</p>
+
+<h2 id="when-you-genuinely-need-a-stored-handle">When you genuinely need a stored handle<a class="anchor" href="#when-you-genuinely-need-a-stored-handle" aria-label="Link to this section">#</a></h2>
+
+<p>Three cases, and they are narrower than they look.</p>
+
+<p><strong>Snapshot isolation.</strong> An export that must reflect the catalogue as it was
+when the export began, not as it drifts underneath. A signed handle describes a query and
+will happily show you rows inserted since.</p>
+
+<p><strong>State too large to carry.</strong> A materialised result of ten thousand
+identifiers does not belong in a tool argument.</p>
+
+<p><strong>Revocation.</strong> If "cancel this" has to take effect immediately rather than
+at expiry, something has to be deleted, and a signed token has nothing to delete.</p>
+
+<p>When you do need one, the handle is still signed — the token identifies a row rather than
+carrying state, and the signature stops a client enumerating other people's rows by
+guessing. And it gets a TTL, an eviction job, and a test that the TTL is actually enforced,
+because a store of handles with no eviction is a memory leak with a business-friendly name.</p>
+
+<h2 id="scoping-a-handle-to-who-asked-for-it">Scoping a handle to who asked for it<a class="anchor" href="#scoping-a-handle-to-who-asked-for-it" aria-label="Link to this section">#</a></h2>
+
+<p><code>ledger</code> is single-tenant so far, which lets this chapter stay about
+mechanism. It will not stay that way: chapter 17 makes it multi-tenant, and at that point
+the tenant goes inside the signed body.</p>
+
+<p>This is the one thing to get right the first time. A handle that encodes a position but
+not an identity is a token that lets whoever holds it read whatever it points at. If the
+scan belongs to one studio, the handle says so, and the tool checks it against the caller —
+every time, not just when the scan opens.</p>
+
+<h2 id="where-else-this-technique-lands">Where else this technique lands<a class="anchor" href="#where-else-this-technique-lands" aria-label="Link to this section">#</a></h2>
+
+<p>Once you see handles as "the state, signed, in an argument", they turn up everywhere the
+protocol used to offer a session.</p>
+
+<p>Multi round-trip requests are the clearest case. A server returning
+<code>resultType: "input_required"</code> has to reconstruct its position when the client
+retries with answers — and the specification gives it <code>requestState</code> to carry
+exactly that. Same technique, standardised slot.</p>
+
+<p>The same shape covers a long-running job's ticket, a draft being assembled across calls,
+and an idempotency key for a write — which is chapter 13.</p>
+
+<h2 id="checkpoint">Checkpoint<a class="anchor" href="#checkpoint" aria-label="Link to this section">#</a></h2>
+
+<p>Sessions are gone and the replacement is better, but it is not free: you have to decide
+what the state <em>is</em>, sign it, expire it, bind it to a purpose, and eventually bind it
+to a caller. In exchange, any instance serves any request, and a retry after a dropped
+connection is safe rather than lossy.</p>
+
+<p>Chapter 13 is about the rest of that sentence — what happens when the connection drops,
+the call times out, or the same request arrives twice.</p>
+<!-- END:body -->
+<!-- BEGIN:pager -->
+<nav class="pager" aria-label="Chapter">
+<a class="prev" href="ch11-going-http.html"><span class="dir">Previous</span><span class="name">11. Going HTTP</span></a>
+<span class="spacer"></span>
+</nav>
+<!-- END:pager -->
+</main>
+</div>
+</body>
+</html>
