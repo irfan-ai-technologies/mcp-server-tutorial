@@ -34,7 +34,7 @@
 </ol>
 <p class="part">Part 3 — Scale</p>
 <ol>
-<li><a aria-disabled="true"><span class="num">11</span>Going HTTP</a></li>
+<li><a href="ch11-going-http.html"><span class="num">11</span>Going HTTP</a></li>
 <li><a aria-disabled="true"><span class="num">12</span>Life after sessions</a></li>
 <li><a aria-disabled="true"><span class="num">13</span>Failure</a></li>
 <li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
@@ -221,8 +221,11 @@ honestly annotated for both.</p>
 <!-- include: code/ledger/tests/test_budget.py lang=python lines=17-45 title=budgets_as_tripwires -->
 <figure class="snippet">
 <figcaption><span class="path">budgets as tripwires</span><span>lines 17–45</span></figcaption>
-<pre class="highlight"><code><span class="c1"># do not, and by then someone should be reading chapter 19 instead.</span>
-<span class="n">TOOLS_LIST_BUDGET</span> <span class="o">=</span> <span class="mi">4_000</span>
+<pre class="highlight"><code><span class="c1"># characters and took the surface to 4,472. Worth arguing about — two tools for</span>
+<span class="c1"># one capability is the most expensive shape there is, and chapter 12 says why</span>
+<span class="c1"># it is still the right call here. The next increase should be harder than this</span>
+<span class="c1"># one, which is the whole reason the number is written down.</span>
+<span class="n">TOOLS_LIST_BUDGET</span> <span class="o">=</span> <span class="mi">5_000</span>
 <span class="c1"># Raised from 1,200 in the chapter 10 commit. find_licences went to 1,226</span>
 <span class="c1"># characters when it gained a limit parameter, a paged return shape and a</span>
 <span class="c1"># description that warns about breadth — and that trade bought an eight-fold</span>
@@ -244,12 +247,7 @@ honestly annotated for both.</p>
         <span class="sa">f</span><span class="s2">&quot;tools/list is </span><span class="si">{</span><span class="n">total</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> characters against a budget of &quot;</span>
         <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">TOOLS_LIST_BUDGET</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">. Raise the budget deliberately, or read &quot;</span>
         <span class="sa">f</span><span class="s2">&quot;chapter 19 about not needing to.&quot;</span>
-    <span class="p">)</span>
-
-
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_no_single_tool_dominates</span><span class="p">(</span><span class="n">client</span><span class="p">):</span>
-    <span class="k">async</span> <span class="k">with</span> <span class="n">client</span><span class="p">:</span>
-        <span class="k">for</span> <span class="n">tool</span> <span class="ow">in</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">list_tools</span><span class="p">():</span></code></pre>
+    <span class="p">)</span></code></pre>
 </figure>
 <!-- endinclude -->
 

@@ -34,7 +34,7 @@
 </ol>
 <p class="part">Part 3 — Scale</p>
 <ol>
-<li><a aria-disabled="true"><span class="num">11</span>Going HTTP</a></li>
+<li><a href="ch11-going-http.html"><span class="num">11</span>Going HTTP</a></li>
 <li><a aria-disabled="true"><span class="num">12</span>Life after sessions</a></li>
 <li><a aria-disabled="true"><span class="num">13</span>Failure</a></li>
 <li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
@@ -298,23 +298,10 @@ until you send a request:</p>
 <figure class="snippet">
 <figcaption><span class="path">code/ledger/src/ledger/__main__.py</span><span>region http_app</span></figcaption>
 <pre class="highlight"><code><span class="k">def</span><span class="w"> </span><span class="nf">http_app</span><span class="p">(</span><span class="n">stateless</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The ASGI app, built explicitly rather than through `mcp.run()`.</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The ASGI app. Chapter 11 moved the detail into ledger.http.&quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ledger.http</span><span class="w"> </span><span class="kn">import</span> <span class="n">build</span>
 
-<span class="sd">    Two reasons, and the second one is a trap worth knowing about.</span>
-
-<span class="sd">    First, an HTTP server you intend to operate wants its own app: health</span>
-<span class="sd">    checks, middleware, and a place to mount things. Chapter 11 adds all three</span>
-<span class="sd">    here.</span>
-
-<span class="sd">    Second, `stateless_http` defaults to False in FastMCP 4.0.3 — the app still</span>
-<span class="sd">    expects the pre-2026-07-28 session handshake and rejects a plain request</span>
-<span class="sd">    with &quot;Missing session ID&quot;. Passing the flag through `mcp.run()` (as either</span>
-<span class="sd">    `stateless_http=` or `stateless=`) does not reach the app in that version;</span>
-<span class="sd">    passing it to `http_app()` does. The current protocol has no sessions at</span>
-<span class="sd">    all, so a server written against it must opt out, and must check that the</span>
-<span class="sd">    opt-out actually took effect.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">return</span> <span class="n">mcp</span><span class="o">.</span><span class="n">http_app</span><span class="p">(</span><span class="n">stateless_http</span><span class="o">=</span><span class="n">stateless</span><span class="p">)</span></code></pre>
+    <span class="k">return</span> <span class="n">build</span><span class="p">(</span><span class="n">stateless</span><span class="o">=</span><span class="n">stateless</span><span class="p">)</span></code></pre>
 </figure>
 <!-- endinclude -->
 

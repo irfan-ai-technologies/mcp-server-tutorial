@@ -110,7 +110,7 @@
           "slug": "ch11-going-http",
           "title": "Going HTTP",
           "standfirst": "Streamable HTTP, running stateless behind a load balancer, and what horizontal scale actually costs you.",
-          "status": "planned",
+          "status": "draft",
           "tag": "ch11-http"
         },
         {

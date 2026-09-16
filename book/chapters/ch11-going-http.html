@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- BEGIN:title --><title>11. Going HTTP &mdash; MCP Servers: Zero to Hero</title><!-- END:title -->
+<link rel="stylesheet" href="../assets/book.css">
+<script src="../assets/book.js" defer></script>
+</head>
+<body>
+<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme">◐</button>
+<div class="shell">
+<nav class="sidebar" aria-label="Contents">
+<!-- BEGIN:sidebar -->
+<a class="brand" href="../index.html">MCP Servers: Zero to Hero</a>
+<p class="part">Part 0 — Orientation</p>
+<ol>
+<li><a href="ch01-what-mcp-actually-is.html"><span class="num">1</span>What MCP actually is</a></li>
+<li><a href="ch02-the-protocol-in-one-chapter.html"><span class="num">2</span>The protocol in one chapter</a></li>
+</ol>
+<p class="part">Part 1 — Zero: a server that works</p>
+<ol>
+<li><a href="ch03-first-server.html"><span class="num">3</span>First server</a></li>
+<li><a href="ch04-tools.html"><span class="num">4</span>Tools</a></li>
+<li><a href="ch05-resources.html"><span class="num">5</span>Resources and templates</a></li>
+<li><a href="ch06-prompts.html"><span class="num">6</span>Prompts</a></li>
+<li><a href="ch07-testing-without-an-llm.html"><span class="num">7</span>Testing without an LLM</a></li>
+</ol>
+<p class="part">Part 2 — The client&#x27;s point of view</p>
+<ol>
+<li><a href="ch08-what-the-model-sees.html"><span class="num">8</span>What the model actually sees</a></li>
+<li><a href="ch09-tool-design-is-prompt-engineering.html"><span class="num">9</span>Tool design is prompt engineering</a></li>
+<li><a href="ch10-result-shaping.html"><span class="num">10</span>Result shaping</a></li>
+</ol>
+<p class="part">Part 3 — Scale</p>
+<ol>
+<li><a href="ch11-going-http.html" aria-current="page"><span class="num">11</span>Going HTTP</a></li>
+<li><a aria-disabled="true"><span class="num">12</span>Life after sessions</a></li>
+<li><a aria-disabled="true"><span class="num">13</span>Failure</a></li>
+<li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
+<li><a aria-disabled="true"><span class="num">15</span>Long-running work</a></li>
+<li><a aria-disabled="true"><span class="num">16</span>Observability</a></li>
+<li><a aria-disabled="true"><span class="num">17</span>Identity and multi-tenancy</a></li>
+<li><a aria-disabled="true"><span class="num">18</span>Security</a></li>
+</ol>
+<p class="part">Part 4 — The context problem</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">19</span>Progressive disclosure I: shrink the surface</a></li>
+<li><a aria-disabled="true"><span class="num">20</span>Progressive disclosure II: search then load</a></li>
+<li><a aria-disabled="true"><span class="num">21</span>Progressive disclosure III: resources as the channel</a></li>
+<li><a aria-disabled="true"><span class="num">22</span>jq as a tool</a></li>
+<li><a aria-disabled="true"><span class="num">23</span>Code mode</a></li>
+</ol>
+<p class="part">Part 5 — Shipping</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">24</span>Packaging and distribution</a></li>
+<li><a aria-disabled="true"><span class="num">25</span>Evaluating a server</a></li>
+<li><a aria-disabled="true"><span class="num">26</span>Anti-patterns and a review checklist</a></li>
+</ol>
+<p class="part">Appendices</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">A</span>The same server without FastMCP</a></li>
+<li><a aria-disabled="true"><span class="num">B</span>Migrating 2025-11-25 to 2026-07-28</a></li>
+<li><a aria-disabled="true"><span class="num">C</span>jq cookbook for agent tool results</a></li>
+<li><a aria-disabled="true"><span class="num">D</span>Glossary</a></li>
+</ol>
+<!-- END:sidebar -->
+</nav>
+<main class="content">
+<header class="chapter-head">
+<!-- BEGIN:head -->
+<p class="eyebrow">Part 3 — Scale &middot; Chapter 11</p>
+<h1>Going HTTP</h1>
+<p class="standfirst">Streamable HTTP, running stateless behind a load balancer, and what horizontal scale actually costs you.</p>
+<div class="chapter-meta"><span><b>Status</b> <span class="status status-draft">draft</span></span><span><b>Protocol</b> <code>2026-07-28</code></span><span><b>Code</b> <code>git checkout ch11-http</code></span></div>
+<!-- END:head -->
+</header>
+<!-- BEGIN:body -->
+<p>stdio is a fine transport and most servers should stay on it. The client spawns your
+process, it lives and dies with the conversation, and there is exactly one of it. Almost
+nothing in Part 3 applies.</p>
+
+<p>Going to HTTP is not a deployment detail. It is the decision to have <em>many</em> of
+something — many clients, many instances, many concurrent calls — and every chapter in this
+part is a consequence of it.</p>
+
+<h2 id="what-the-revision-handed-you">What the revision handed you<a class="anchor" href="#what-the-revision-handed-you" aria-label="Link to this section">#</a></h2>
+
+<p>Before 2026-07-28, an HTTP MCP server was stateful by construction. A client called
+<code>initialize</code>, got back an <code>Mcp-Session-Id</code>, and every subsequent
+request carried it. That session was real state on one instance, which meant sticky routing,
+session affinity at the load balancer, and a rolling deploy that dropped every conversation
+in flight.</p>
+
+<div class="callout spec">
+<span class="label">Specification 2026-07-28</span>
+<p>Protocol-level sessions and the <code>Mcp-Session-Id</code> header are removed from the
+Streamable HTTP transport. List endpoints no longer vary per connection. The
+<code>initialize</code>/<code>notifications/initialized</code> handshake is gone; every
+request carries its protocol version and client capabilities in <code>_meta</code>.</p>
+</div>
+
+<p>So a request is now self-contained. Any instance can serve it, you can scale on CPU like
+any other service, and a deploy is a deploy rather than an outage. That is a large gift and
+it comes with one bill, which chapter 12 pays: anything you used to keep in a session, you
+now have to hand to the client and take back.</p>
+
+<h2 id="turning-it-on-and-checking-that-you-did">Turning it on, and checking that you did<a class="anchor" href="#turning-it-on-and-checking-that-you-did" aria-label="Link to this section">#</a></h2>
+
+<p>Chapter 3 flagged this and it is worth repeating here because it is the single most
+likely way to deploy a server that is not doing what you think:</p>
+
+<!-- include: code/ledger/src/ledger/http.py lang=python region=stateless_note -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/http.py</span><span>region stateless_note</span></figcaption>
+<pre class="highlight"><code><span class="k">def</span><span class="w"> </span><span class="nf">build</span><span class="p">(</span><span class="n">stateless</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The app ledger actually serves.</span>
+
+<span class="sd">    `stateless_http` must be passed here rather than to `mcp.run()`: in FastMCP</span>
+<span class="sd">    4.0.3 the flag does not reach the app through run(), and the default keeps</span>
+<span class="sd">    the pre-2026-07-28 session handshake alive. See docs/protocol-notes.md.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">app</span> <span class="o">=</span> <span class="n">mcp</span><span class="o">.</span><span class="n">http_app</span><span class="p">(</span><span class="n">stateless_http</span><span class="o">=</span><span class="n">stateless</span><span class="p">)</span>
+    <span class="n">app</span><span class="o">.</span><span class="n">add_middleware</span><span class="p">(</span><span class="n">RequestId</span><span class="p">)</span>
+    <span class="n">app</span><span class="o">.</span><span class="n">router</span><span class="o">.</span><span class="n">routes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Route</span><span class="p">(</span><span class="s2">&quot;/health&quot;</span><span class="p">,</span> <span class="n">health</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">app</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>FastMCP 4.0.3 defaults <code>stateless_http</code> to <code>False</code>, which keeps the
+old handshake alive for older clients. Passing the flag through <code>mcp.run()</code> does
+not reach the app. A server started that way answers a plain request with
+<code>{"error": {"code": -32600, "message": "Bad Request: Missing session ID"}}</code>, and
+you will not see it unless you send one.</p>
+
+<p>Which is why <code>ledger</code> has this test rather than a comment:</p>
+
+<!-- include: code/ledger/tests/test_http.py lang=python region=no_session -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/tests/test_http.py</span><span>region no_session</span></figcaption>
+<pre class="highlight"><code><span class="k">def</span><span class="w"> </span><span class="nf">test_a_tool_call_works_with_no_session_and_no_handshake</span><span class="p">(</span><span class="n">http</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The whole point of 2026-07-28, asserted. No initialize, no</span>
+<span class="sd">    Mcp-Session-Id, nothing carried from any earlier request.&quot;&quot;&quot;</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">http</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+        <span class="s2">&quot;/mcp/&quot;</span><span class="p">,</span>
+        <span class="n">json</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;jsonrpc&quot;</span><span class="p">:</span> <span class="s2">&quot;2.0&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+            <span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;tools/call&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;params&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;get_title&quot;</span><span class="p">,</span> <span class="s2">&quot;arguments&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;title_id&quot;</span><span class="p">:</span> <span class="s2">&quot;T-1000&quot;</span><span class="p">}},</span>
+        <span class="p">},</span>
+        <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;Accept&quot;</span><span class="p">:</span> <span class="s2">&quot;application/json, text/event-stream&quot;</span><span class="p">},</span>
+    <span class="p">)</span>
+    <span class="k">assert</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span>
+    <span class="k">assert</span> <span class="s2">&quot;Missing session ID&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">response</span><span class="o">.</span><span class="n">text</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<h2 id="an-app-not-a-flag">An app, not a flag<a class="anchor" href="#an-app-not-a-flag" aria-label="Link to this section">#</a></h2>
+
+<p>Once you are serving HTTP, you need the things any HTTP service needs, and MCP gives you
+none of them. <code>ledger</code> builds its own ASGI app and mounts the MCP one inside it.</p>
+
+<p><strong>Health.</strong> Two different questions get one endpoint here, and the docstring
+says why that is only acceptable because the sole dependency is a local file:</p>
+
+<!-- include: code/ledger/src/ledger/http.py lang=python region=health -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/http.py</span><span>region health</span></figcaption>
+<pre class="highlight"><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">health</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Liveness and readiness in one endpoint, which is usually a mistake.</span>
+
+<span class="sd">    Liveness asks &quot;is this process wedged&quot;; readiness asks &quot;can it serve&quot;.</span>
+<span class="sd">    ledger can answer both cheaply because its only dependency is a file, so</span>
+<span class="sd">    they are the same question here. The moment a dependency can be slow, split</span>
+<span class="sd">    them: a readiness probe that waits on a database will take your whole fleet</span>
+<span class="sd">    out of rotation during a blip that liveness would have ridden through.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">one</span><span class="p">(</span><span class="s2">&quot;SELECT COUNT(*) AS n FROM titles&quot;</span><span class="p">)[</span><span class="s2">&quot;n&quot;</span><span class="p">]</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>  <span class="c1"># noqa: BLE001 — the point is to report, not raise</span>
+        <span class="k">return</span> <span class="n">JSONResponse</span><span class="p">(</span>
+            <span class="p">{</span><span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="s2">&quot;unready&quot;</span><span class="p">,</span> <span class="s2">&quot;reason&quot;</span><span class="p">:</span> <span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">},</span> <span class="n">status_code</span><span class="o">=</span><span class="mi">503</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">JSONResponse</span><span class="p">({</span><span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="s2">&quot;ok&quot;</span><span class="p">,</span> <span class="s2">&quot;titles&quot;</span><span class="p">:</span> <span class="n">rows</span><span class="p">,</span> <span class="s2">&quot;protocol&quot;</span><span class="p">:</span> <span class="s2">&quot;2026-07-28&quot;</span><span class="p">})</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Liveness asks whether the process is wedged. Readiness asks whether it can serve. Wire a
+readiness probe to a database round trip and a two-second blip in that database takes your
+entire fleet out of rotation simultaneously — every instance fails the same check at the
+same moment, and nothing is left to serve the traffic that was fine.</p>
+
+<p><strong>A request id.</strong> Without sessions there is no connection to correlate by,
+so an id per request is the only thread from a log line to the call someone is complaining
+about:</p>
+
+<!-- include: code/ledger/src/ledger/http.py lang=python region=request_id -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/http.py</span><span>region request_id</span></figcaption>
+<pre class="highlight"><code><span class="k">class</span><span class="w"> </span><span class="nc">RequestId</span><span class="p">(</span><span class="n">BaseHTTPMiddleware</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Give every request an id, and hand it back in the response.</span>
+
+<span class="sd">    Without sessions there is no connection to correlate by, so the id is the</span>
+<span class="sd">    only thread tying a log line to the call a user is complaining about.</span>
+<span class="sd">    Honour an inbound one — a client or a gateway may already have issued it —</span>
+<span class="sd">    rather than always minting your own.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">dispatch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">call_next</span><span class="p">):</span>
+        <span class="n">request_id</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;x-request-id&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">()</span><span class="o">.</span><span class="n">hex</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_next</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+        <span class="n">response</span><span class="o">.</span><span class="n">headers</span><span class="p">[</span><span class="s2">&quot;x-request-id&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">request_id</span>
+        <span class="k">return</span> <span class="n">response</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Honour an inbound <code>x-request-id</code> rather than always minting one. A gateway or
+the client may already have issued it, and a second id breaks the trace exactly where it
+crosses a boundary. Chapter 16 takes this further into OpenTelemetry, where the protocol has
+a defined place to put trace context.</p>
+
+<h2 id="what-stateless-does-not-mean">What "stateless" does not mean<a class="anchor" href="#what-stateless-does-not-mean" aria-label="Link to this section">#</a></h2>
+
+<p>It means no <em>protocol</em> state between requests. It does not mean your server has no
+state — <code>ledger</code> has a database — and it does not mean your process is free of
+memory.</p>
+
+<p>The distinction that matters: state which is <strong>shared and authoritative</strong>
+(your database) is fine, because every instance sees the same thing. State which is
+<strong>local to one process</strong> is now a bug, because the next request will land
+somewhere else. An in-memory cache keyed by something a client sent you, a dictionary of
+"open" things, a counter — all of these work perfectly on one instance and fail
+intermittently on four, which is the worst way to fail.</p>
+
+<div class="callout warn">
+<span class="label">The test that finds this</span>
+<p>Run two instances behind anything that round-robins, and send alternating requests. Any
+per-process state shows up immediately as a coin flip. This is worth doing before you
+believe a server is stateless, because the failure mode under one instance is
+<em>silence</em>.</p>
+</div>
+
+<h2 id="concurrency">Concurrency<a class="anchor" href="#concurrency" aria-label="Link to this section">#</a></h2>
+
+<p>On stdio, calls arrive one at a time from one client. Over HTTP they arrive together, from
+several clients, and your tool bodies are suddenly concurrent code.</p>
+
+<p>FastMCP runs synchronous tool functions in a thread by default, which keeps a blocking
+database call from stalling the event loop — <code>ledger</code>'s tools are ordinary
+<code>def</code> functions for exactly this reason. That is a sensible default and it has an
+edge: anything shared between those threads needs to be safe for them. SQLite connections
+are not, which is why <code>db.connect()</code> opens one per call rather than holding a
+module-level handle.</p>
+
+<p>Connection-per-call is the right default and it does not scale forever. When it stops
+being enough you want a pool, and a pool has a size, and that size is a concurrency limit
+whether or not you chose it deliberately. Chapter 13 is about choosing it.</p>
+
+<h2 id="streams-break-and-nothing-comes-back">Streams break, and nothing comes back<a class="anchor" href="#streams-break-and-nothing-comes-back" aria-label="Link to this section">#</a></h2>
+
+<p>One removal in this revision changes retry design more than its two lines suggest.</p>
+
+<div class="callout spec">
+<span class="label">Specification 2026-07-28</span>
+<p>SSE stream resumability and message redelivery are removed from Streamable HTTP — no
+<code>Last-Event-ID</code> header, no event ids. A broken response stream loses the in-flight
+request, and clients <strong>MUST</strong> re-issue it as a new request with a new request
+id.</p>
+</div>
+
+<p>A tool call that was running when the connection dropped has not been cancelled. It is
+still executing somewhere, and the client — which has no way to learn its outcome — will
+send it again. Whether that is harmless or a disaster depends entirely on whether your tool
+meant it when it claimed <code>idempotentHint</code>.</p>
+
+<p>Every <code>ledger</code> tool is a read, so re-execution costs nothing but time. The
+moment one of them writes, that stops being true, and chapter 13 is where it is dealt with
+properly.</p>
+
+<h2 id="what-to-check-before-you-call-it-deployed">What to check before you call it deployed<a class="anchor" href="#what-to-check-before-you-call-it-deployed" aria-label="Link to this section">#</a></h2>
+
+<p>A short list, each of which is a test rather than a habit:</p>
+
+<p>A plain <code>tools/call</code> with no session header and no prior request succeeds.
+Health returns without touching anything slow. Two instances behind a balancer produce
+identical answers to identical requests. The same call issued twice leaves the system in the
+same state. And a request id appears in every log line your server writes.</p>
+
+<p>Chapter 12 is the other half of this one: everything you would have kept in a session,
+and where it goes instead.</p>
+<!-- END:body -->
+<!-- BEGIN:pager -->
+<nav class="pager" aria-label="Chapter">
+<a class="prev" href="ch10-result-shaping.html"><span class="dir">Previous</span><span class="name">10. Result shaping</span></a>
+<span class="spacer"></span>
+</nav>
+<!-- END:pager -->
+</main>
+</div>
+</body>
+</html>

@@ -36,6 +36,7 @@ def test_an_inbound_request_id_is_honoured(http):
     assert response.headers["x-request-id"] == "from-the-gateway"
 
 
+# region: no_session
 def test_a_tool_call_works_with_no_session_and_no_handshake(http):
     """The whole point of 2026-07-28, asserted. No initialize, no
     Mcp-Session-Id, nothing carried from any earlier request."""
@@ -51,6 +52,7 @@ def test_a_tool_call_works_with_no_session_and_no_handshake(http):
     )
     assert response.status_code == 200
     assert "Missing session ID" not in response.text
+# endregion: no_session
 
 
 def test_the_session_based_app_still_exists_for_older_clients(http):

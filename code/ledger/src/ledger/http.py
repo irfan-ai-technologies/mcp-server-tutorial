@@ -56,6 +56,7 @@ class RequestId(BaseHTTPMiddleware):
 # endregion: request_id
 
 
+# region: stateless_note
 def build(stateless: bool = True):
     """The app ledger actually serves.
 
@@ -67,3 +68,4 @@ def build(stateless: bool = True):
     app.add_middleware(RequestId)
     app.router.routes.append(Route("/health", health))
     return app
+# endregion: stateless_note
