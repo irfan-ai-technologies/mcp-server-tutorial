@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 
+# region: budgets
 # 4,000 → 5,000 in chapter 12 (the scan pair), → 6,000 here for reserve_window.
 # Three increases in three chapters is the pattern this test exists to make
 # visible, and it is the argument Part 4 opens with: a surface cannot be kept
@@ -25,6 +26,7 @@ TOOLS_LIST_BUDGET = 6_000
 # reduction in what the tool actually returns. Argued, not reflexive.
 ONE_TOOL_BUDGET = 1_400
 DESCRIPTION_FLOOR = 25
+# endregion: budgets
 
 
 def wire_size(obj) -> int:

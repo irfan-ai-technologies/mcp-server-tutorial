@@ -218,36 +218,21 @@ honestly annotated for both.</p>
 
 <p>Chapter 8 recommended budgets; here they are, as tests that run in under two seconds:</p>
 
-<!-- include: code/ledger/tests/test_budget.py lang=python lines=17-45 title=budgets_as_tripwires -->
+<!-- include: code/ledger/tests/test_budget.py lang=python region=budgets title=budgets_as_tripwires -->
 <figure class="snippet">
-<figcaption><span class="path">budgets as tripwires</span><span>lines 17–45</span></figcaption>
-<pre class="highlight"><code><span class="c1"># characters and took the surface to 4,472. Worth arguing about — two tools for</span>
-<span class="c1"># one capability is the most expensive shape there is, and chapter 12 says why</span>
-<span class="c1"># it is still the right call here. The next increase should be harder than this</span>
-<span class="c1"># one, which is the whole reason the number is written down.</span>
-<span class="n">TOOLS_LIST_BUDGET</span> <span class="o">=</span> <span class="mi">5_000</span>
+<figcaption><span class="path">budgets as tripwires</span><span>region budgets</span></figcaption>
+<pre class="highlight"><code><span class="c1"># 4,000 → 5,000 in chapter 12 (the scan pair), → 6,000 here for reserve_window.</span>
+<span class="c1"># Three increases in three chapters is the pattern this test exists to make</span>
+<span class="c1"># visible, and it is the argument Part 4 opens with: a surface cannot be kept</span>
+<span class="c1"># small by resolve alone. From chapter 19 this number comes down instead of up,</span>
+<span class="c1"># and if it does not, the book is wrong.</span>
+<span class="n">TOOLS_LIST_BUDGET</span> <span class="o">=</span> <span class="mi">6_000</span>
 <span class="c1"># Raised from 1,200 in the chapter 10 commit. find_licences went to 1,226</span>
 <span class="c1"># characters when it gained a limit parameter, a paged return shape and a</span>
 <span class="c1"># description that warns about breadth — and that trade bought an eight-fold</span>
 <span class="c1"># reduction in what the tool actually returns. Argued, not reflexive.</span>
 <span class="n">ONE_TOOL_BUDGET</span> <span class="o">=</span> <span class="mi">1_400</span>
-<span class="n">DESCRIPTION_FLOOR</span> <span class="o">=</span> <span class="mi">25</span>
-
-
-<span class="k">def</span><span class="w"> </span><span class="nf">wire_size</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-    <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">model_dump_json</span><span class="p">(</span><span class="n">exclude_none</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
-
-
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_the_tool_surface_fits_its_budget</span><span class="p">(</span><span class="n">client</span><span class="p">):</span>
-    <span class="k">async</span> <span class="k">with</span> <span class="n">client</span><span class="p">:</span>
-        <span class="n">tools</span> <span class="o">=</span> <span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">list_tools</span><span class="p">()</span>
-
-    <span class="n">total</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">wire_size</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tools</span><span class="p">)</span>
-    <span class="k">assert</span> <span class="n">total</span> <span class="o">&lt;=</span> <span class="n">TOOLS_LIST_BUDGET</span><span class="p">,</span> <span class="p">(</span>
-        <span class="sa">f</span><span class="s2">&quot;tools/list is </span><span class="si">{</span><span class="n">total</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2"> characters against a budget of &quot;</span>
-        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">TOOLS_LIST_BUDGET</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">. Raise the budget deliberately, or read &quot;</span>
-        <span class="sa">f</span><span class="s2">&quot;chapter 19 about not needing to.&quot;</span>
-    <span class="p">)</span></code></pre>
+<span class="n">DESCRIPTION_FLOOR</span> <span class="o">=</span> <span class="mi">25</span></code></pre>
 </figure>
 <!-- endinclude -->
 
