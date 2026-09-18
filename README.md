@@ -9,8 +9,9 @@ can check out at any chapter.
 them.
 
 > **Status: in progress.** Parts 0 to 2 are drafted and Part 3 is under way — chapters 1
-> to 12, with `ledger` stateless over HTTP behind 50 tests, a measured token budget, and
-> signed handles in place of the sessions the protocol removed. Chapters are published as they are written and
+> to 14, with `ledger` stateless over HTTP behind 61 tests, a measured token budget,
+> signed handles in place of the sessions the protocol removed, and an enforced
+> idempotency key on the one tool that writes. Chapters are published as they are written and
 > each carries its own status. See the [contents page](book/index.html) for what is drafted, reviewed, or
 > still planned, and [`PLAN.md`](PLAN.md) for the full outline and where the work is going.
 
