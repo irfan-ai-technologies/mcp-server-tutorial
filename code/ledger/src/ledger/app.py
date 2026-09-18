@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from fastmcp import FastMCP
 
+from ledger.caching import DeterministicOrder
+
 mcp = FastMCP(
     name="ledger",
     instructions=(
@@ -27,3 +29,7 @@ mcp = FastMCP(
         "units."
     ),
 )
+
+# Chapter 14: the same order on every instance and every call, so a client's
+# prompt cache survives a deploy that happened to reorder an import.
+mcp.add_middleware(DeterministicOrder())
