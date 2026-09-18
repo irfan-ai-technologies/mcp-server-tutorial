@@ -126,7 +126,7 @@
           "slug": "ch13-failure",
           "title": "Failure",
           "standfirst": "Timeouts, cancellation, backpressure, concurrency limits, and retry design now that streams are not resumable.",
-          "status": "planned",
+          "status": "draft",
           "tag": "ch13-failure"
         },
         {

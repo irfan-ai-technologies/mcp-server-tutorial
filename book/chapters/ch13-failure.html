@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- BEGIN:title --><title>13. Failure &mdash; MCP Servers: Zero to Hero</title><!-- END:title -->
+<link rel="stylesheet" href="../assets/book.css">
+<script src="../assets/book.js" defer></script>
+</head>
+<body>
+<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme">◐</button>
+<div class="shell">
+<nav class="sidebar" aria-label="Contents">
+<!-- BEGIN:sidebar -->
+<a class="brand" href="../index.html">MCP Servers: Zero to Hero</a>
+<p class="part">Part 0 — Orientation</p>
+<ol>
+<li><a href="ch01-what-mcp-actually-is.html"><span class="num">1</span>What MCP actually is</a></li>
+<li><a href="ch02-the-protocol-in-one-chapter.html"><span class="num">2</span>The protocol in one chapter</a></li>
+</ol>
+<p class="part">Part 1 — Zero: a server that works</p>
+<ol>
+<li><a href="ch03-first-server.html"><span class="num">3</span>First server</a></li>
+<li><a href="ch04-tools.html"><span class="num">4</span>Tools</a></li>
+<li><a href="ch05-resources.html"><span class="num">5</span>Resources and templates</a></li>
+<li><a href="ch06-prompts.html"><span class="num">6</span>Prompts</a></li>
+<li><a href="ch07-testing-without-an-llm.html"><span class="num">7</span>Testing without an LLM</a></li>
+</ol>
+<p class="part">Part 2 — The client&#x27;s point of view</p>
+<ol>
+<li><a href="ch08-what-the-model-sees.html"><span class="num">8</span>What the model actually sees</a></li>
+<li><a href="ch09-tool-design-is-prompt-engineering.html"><span class="num">9</span>Tool design is prompt engineering</a></li>
+<li><a href="ch10-result-shaping.html"><span class="num">10</span>Result shaping</a></li>
+</ol>
+<p class="part">Part 3 — Scale</p>
+<ol>
+<li><a href="ch11-going-http.html"><span class="num">11</span>Going HTTP</a></li>
+<li><a href="ch12-life-after-sessions.html"><span class="num">12</span>Life after sessions</a></li>
+<li><a href="ch13-failure.html" aria-current="page"><span class="num">13</span>Failure</a></li>
+<li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
+<li><a aria-disabled="true"><span class="num">15</span>Long-running work</a></li>
+<li><a aria-disabled="true"><span class="num">16</span>Observability</a></li>
+<li><a aria-disabled="true"><span class="num">17</span>Identity and multi-tenancy</a></li>
+<li><a aria-disabled="true"><span class="num">18</span>Security</a></li>
+</ol>
+<p class="part">Part 4 — The context problem</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">19</span>Progressive disclosure I: shrink the surface</a></li>
+<li><a aria-disabled="true"><span class="num">20</span>Progressive disclosure II: search then load</a></li>
+<li><a aria-disabled="true"><span class="num">21</span>Progressive disclosure III: resources as the channel</a></li>
+<li><a aria-disabled="true"><span class="num">22</span>jq as a tool</a></li>
+<li><a aria-disabled="true"><span class="num">23</span>Code mode</a></li>
+</ol>
+<p class="part">Part 5 — Shipping</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">24</span>Packaging and distribution</a></li>
+<li><a aria-disabled="true"><span class="num">25</span>Evaluating a server</a></li>
+<li><a aria-disabled="true"><span class="num">26</span>Anti-patterns and a review checklist</a></li>
+</ol>
+<p class="part">Appendices</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">A</span>The same server without FastMCP</a></li>
+<li><a aria-disabled="true"><span class="num">B</span>Migrating 2025-11-25 to 2026-07-28</a></li>
+<li><a aria-disabled="true"><span class="num">C</span>jq cookbook for agent tool results</a></li>
+<li><a aria-disabled="true"><span class="num">D</span>Glossary</a></li>
+</ol>
+<!-- END:sidebar -->
+</nav>
+<main class="content">
+<header class="chapter-head">
+<!-- BEGIN:head -->
+<p class="eyebrow">Part 3 — Scale &middot; Chapter 13</p>
+<h1>Failure</h1>
+<p class="standfirst">Timeouts, cancellation, backpressure, concurrency limits, and retry design now that streams are not resumable.</p>
+<div class="chapter-meta"><span><b>Status</b> <span class="status status-draft">draft</span></span><span><b>Protocol</b> <code>2026-07-28</code></span><span><b>Code</b> <code>git checkout ch13-failure</code></span></div>
+<!-- END:head -->
+</header>
+<!-- BEGIN:body -->
+<p>Chapter 11 removed a safety net you may not have noticed was there. Under the old
+transport a broken stream could be resumed: the client sent <code>Last-Event-ID</code>, the
+server replayed what was missed, and the request carried on.</p>
+
+<div class="callout spec">
+<span class="label">Specification 2026-07-28</span>
+<p>SSE stream resumability and message redelivery are removed. A broken response stream
+loses the in-flight request, and clients <strong>MUST</strong> re-issue it as a new request
+with a new request id.</p>
+</div>
+
+<p>Read that from the server's side. Your tool was running when the connection dropped. It
+was not cancelled — it is still executing. The client, which cannot learn its outcome, is now
+obliged to send it again. You are about to run the same operation twice, concurrently, with
+no way to tell that is what is happening.</p>
+
+<p>For every tool in this book so far that was free, because they are all reads. This
+chapter is where <code>ledger</code> gains one that writes.</p>
+
+<h2 id="idempotency-is-a-promise-not-a-hint">Idempotency is a promise, not a hint<a class="anchor" href="#idempotency-is-a-promise-not-a-hint" aria-label="Link to this section">#</a></h2>
+
+<p>Chapter 9 said annotations are promises about your system rather than descriptions of
+your function. Here is the invoice.</p>
+
+<p><code>reserve_window</code> holds a licensing window so it cannot be sold twice. Retried
+naively it reserves the window twice — and the second reservation is indistinguishable from
+a genuine second request, because on the wire it <em>is</em> one.</p>
+
+<p>The standard answer is a key supplied by the caller. The server remembers the outcome
+against it, and a repeat returns the stored result instead of running again:</p>
+
+<!-- include: code/ledger/src/ledger/writes.py lang=python region=idempotency -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/writes.py</span><span>region idempotency</span></figcaption>
+<pre class="highlight"><code><span class="k">def</span><span class="w"> </span><span class="nf">_fingerprint</span><span class="p">(</span><span class="n">args</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span>
+        <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="n">sort_keys</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;:&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">encode</span><span class="p">()</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">once</span><span class="p">(</span><span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">args</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">do</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run `do()` at most once for `key`, and return the same result thereafter.</span>
+
+<span class="sd">    The insert is the lock. Two concurrent calls with the same key race to write</span>
+<span class="sd">    the reservation row; SQLite lets exactly one win on the primary key, and the</span>
+<span class="sd">    loser reads back what the winner stored. No application-level locking, and</span>
+<span class="sd">    nothing to release if the process dies mid-call.</span>
+
+<span class="sd">    The argument fingerprint is what turns this from a cache into a safety</span>
+<span class="sd">    mechanism: reusing a key with different arguments is not a retry, it is a</span>
+<span class="sd">    client bug, and it is refused rather than answered from the store.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">fingerprint</span> <span class="o">=</span> <span class="n">_fingerprint</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="n">conn</span> <span class="o">=</span> <span class="n">_connect</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">seen</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+            <span class="s2">&quot;SELECT argument_hash, result FROM idempotency WHERE key = :key&quot;</span><span class="p">,</span>
+            <span class="p">{</span><span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="n">key</span><span class="p">},</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">seen</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">seen</span><span class="p">[</span><span class="s2">&quot;argument_hash&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="n">fingerprint</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">ToolError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;idempotency key </span><span class="si">{</span><span class="n">key</span><span class="si">!r}</span><span class="s2"> was already used with different &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;arguments; use a new key for a new request&quot;</span>
+                <span class="p">)</span>
+            <span class="k">return</span> <span class="p">{</span><span class="o">**</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">seen</span><span class="p">[</span><span class="s2">&quot;result&quot;</span><span class="p">]),</span> <span class="s2">&quot;replayed&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+
+        <span class="n">result</span> <span class="o">=</span> <span class="n">do</span><span class="p">(</span><span class="n">conn</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                <span class="s2">&quot;INSERT INTO idempotency VALUES (:key, :hash, :result, :now)&quot;</span><span class="p">,</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="n">key</span><span class="p">,</span>
+                    <span class="s2">&quot;hash&quot;</span><span class="p">:</span> <span class="n">fingerprint</span><span class="p">,</span>
+                    <span class="s2">&quot;result&quot;</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">result</span><span class="p">),</span>
+                    <span class="s2">&quot;now&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()),</span>
+                <span class="p">},</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="n">sqlite3</span><span class="o">.</span><span class="n">IntegrityError</span><span class="p">:</span>
+            <span class="c1"># Lost the race. The winner&#39;s result is authoritative.</span>
+            <span class="n">stored</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+                <span class="s2">&quot;SELECT result FROM idempotency WHERE key = :key&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="n">key</span><span class="p">}</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+            <span class="k">return</span> <span class="p">{</span><span class="o">**</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">stored</span><span class="p">[</span><span class="s2">&quot;result&quot;</span><span class="p">]),</span> <span class="s2">&quot;replayed&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+        <span class="k">return</span> <span class="p">{</span><span class="o">**</span><span class="n">result</span><span class="p">,</span> <span class="s2">&quot;replayed&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">}</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Two decisions in there are the whole chapter.</p>
+
+<p><strong>The insert is the lock.</strong> Concurrent retries race to write the row; the
+primary key lets exactly one win, and the loser reads back what the winner stored. There is
+no application-level lock to acquire and — more importantly — nothing to <em>release</em> if
+the process dies holding it. A lock that outlives the process that took it is a worse problem
+than the one it solved.</p>
+
+<p><strong>The arguments are fingerprinted.</strong> Reusing a key with different arguments
+is refused, loudly. That is what separates an idempotency mechanism from a cache: a cache
+would cheerfully return the old result, and the second request — a different one, which the
+client believes has happened — silently never happens at all. That surfaces weeks later as a
+window nobody reserved.</p>
+
+<p>The test names the failure it prevents:</p>
+
+<!-- include: code/ledger/tests/test_writes.py lang=python region=retry -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/tests/test_writes.py</span><span>region retry</span></figcaption>
+<pre class="highlight"><code><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_retrying_returns_the_original_rather_than_a_second</span><span class="p">(</span><span class="n">client</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The failure this exists to prevent: a dropped stream, a client reissuing</span>
+<span class="sd">    the request as the specification tells it to, and a window reserved twice.&quot;&quot;&quot;</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">a_free_slot</span><span class="p">()</span> <span class="o">|</span> <span class="p">{</span><span class="s2">&quot;idempotency_key&quot;</span><span class="p">:</span> <span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">()</span><span class="o">.</span><span class="n">hex</span><span class="p">}</span>
+
+    <span class="k">async</span> <span class="k">with</span> <span class="n">client</span><span class="p">:</span>
+        <span class="n">first</span> <span class="o">=</span> <span class="p">(</span><span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s2">&quot;reserve_window&quot;</span><span class="p">,</span> <span class="n">args</span><span class="p">))</span><span class="o">.</span><span class="n">data</span>
+        <span class="n">again</span> <span class="o">=</span> <span class="p">(</span><span class="k">await</span> <span class="n">client</span><span class="o">.</span><span class="n">call_tool</span><span class="p">(</span><span class="s2">&quot;reserve_window&quot;</span><span class="p">,</span> <span class="n">args</span><span class="p">))</span><span class="o">.</span><span class="n">data</span>
+
+    <span class="k">assert</span> <span class="n">again</span><span class="p">[</span><span class="s2">&quot;replayed&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">True</span>
+    <span class="k">assert</span> <span class="n">again</span><span class="p">[</span><span class="s2">&quot;reservation_id&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="n">first</span><span class="p">[</span><span class="s2">&quot;reservation_id&quot;</span><span class="p">]</span>
+
+    <span class="n">conn</span> <span class="o">=</span> <span class="n">writes</span><span class="o">.</span><span class="n">_connect</span><span class="p">()</span>
+    <span class="n">rows</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">&quot;SELECT COUNT(*) c FROM reservations&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()[</span><span class="s2">&quot;c&quot;</span><span class="p">]</span>
+    <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">assert</span> <span class="n">rows</span> <span class="o">==</span> <span class="mi">1</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<h2 id="where-the-key-comes-from">Where the key comes from<a class="anchor" href="#where-the-key-comes-from" aria-label="Link to this section">#</a></h2>
+
+<p>The caller generates it, which means the model generates it, which sounds alarming until
+you look at what it has to be: unique per <em>request</em>, stable across <em>retries of
+that request</em>. A UUID satisfies both, and the parameter description says so in one
+line.</p>
+
+<p>Do not derive the key from the arguments on the server. That makes two genuinely separate
+requests with identical arguments collide — reserving the same window twice on purpose is a
+real thing to want — and it removes the client's ability to say "this is a new request" at
+all.</p>
+
+<p>Keys need a retention window rather than eternal storage: long enough to cover any retry a
+client could plausibly make, which is minutes, not months. A table of idempotency keys with
+no eviction is a disk-space incident with a professional-sounding name.</p>
+
+<h2 id="timeouts-and-who-owns-them">Timeouts, and who owns them<a class="anchor" href="#timeouts-and-who-owns-them" aria-label="Link to this section">#</a></h2>
+
+<p>Three timeouts exist on every call, usually set by three people who have never spoken.</p>
+
+<div class="table-scroll">
+<table>
+<thead><tr><th>Timeout</th><th>Set by</th><th>What happens when it fires</th></tr></thead>
+<tbody>
+<tr><td>Client call timeout</td><td>The MCP client</td><td>Client gives up; your tool keeps running</td></tr>
+<tr><td>Proxy or load balancer idle</td><td>Infrastructure</td><td>Stream cut; your tool keeps running</td></tr>
+<tr><td>Tool timeout</td><td>You</td><td>Your tool stops</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Only the last one stops work. FastMCP takes a <code>timeout</code> per tool, and setting
+one is how a pathological query stops occupying a worker until the process restarts. Set it
+<em>below</em> the infrastructure timeout, or you will spend capacity producing results
+nobody is still waiting for — the most expensive kind of work there is.</p>
+
+<p>When you do time out, say what to do differently. "Timed out after 30s; narrow by
+territory, or use open_licence_scan for a full walk" is recoverable. "Request timed out"
+invites the identical request again, and this time the cost is your fault.</p>
+
+<h2 id="cancellation-and-the-work-that-does-not-stop">Cancellation, and the work that does not stop<a class="anchor" href="#cancellation-and-the-work-that-does-not-stop" aria-label="Link to this section">#</a></h2>
+
+<p>A client that disconnects has not cancelled anything. Python will not interrupt a blocking
+database call because nobody is listening any more, and FastMCP runs synchronous tool bodies
+in a thread precisely so they do not block the event loop — which also means they do not
+notice the loop has given up on them.</p>
+
+<p>Abandoned work still holds your connection pool, your CPU and your database. For anything
+long, this is the argument for not doing it in a tool call at all: the tasks extension in
+chapter 15 exists so slow work can outlive the request that started it deliberately, rather
+than by accident.</p>
+
+<h2 id="backpressure">Backpressure<a class="anchor" href="#backpressure" aria-label="Link to this section">#</a></h2>
+
+<p>On stdio there was one caller and one call at a time. Over HTTP the question "how many of
+these run at once" has an answer whether or not you chose it — and it is usually your
+database connection pool.</p>
+
+<p>The failure that produces is the bad kind. Everything slows down together, health checks
+start timing out, and the fleet drops out of rotation simultaneously, which is exactly the
+scenario chapter 11's health endpoint was written not to participate in.</p>
+
+<p>Pick the limit deliberately and reject past it rather than queueing indefinitely. A fast
+"busy, retry shortly" leaves the caller able to act. A request that queues for ninety seconds
+and then fails has spent the caller's patience and your capacity and taught nobody
+anything.</p>
+
+<div class="callout warn">
+<span class="label">The one to get right</span>
+<p>Retry storms compound. A client that retries on timeout, behind a proxy that retries on
+5xx, in front of a pool that is already saturated, turns a blip into an outage. If you add
+retries anywhere, add jitter and a ceiling, and make sure at most one layer is retrying.</p>
+</div>
+
+<h2 id="what-to-design-for">What to design for<a class="anchor" href="#what-to-design-for" aria-label="Link to this section">#</a></h2>
+
+<p>Assume every call may run twice, concurrently, and that the caller may see the result of
+neither. That sounds pessimistic. It is just what "no resumability" means, read carefully.</p>
+
+<p>Reads are fine. Writes need a key, and the key needs enforcing rather than announcing.
+Long work needs somewhere to live that is not a request, which is chapter 15. And every limit
+in your system has a number: if you did not choose it, your database chose it, and it chose
+badly.</p>
+
+<p>Chapter 14 is the opposite problem — not what happens when a call fails, but what it costs
+when a hundred identical ones succeed.</p>
+<!-- END:body -->
+<!-- BEGIN:pager -->
+<nav class="pager" aria-label="Chapter">
+<a class="prev" href="ch12-life-after-sessions.html"><span class="dir">Previous</span><span class="name">12. Life after sessions</span></a>
+<span class="spacer"></span>
+</nav>
+<!-- END:pager -->
+</main>
+</div>
+</body>
+</html>
