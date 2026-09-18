@@ -19,7 +19,15 @@ EXPECTED_TOOLS = {
     # chapter 12
     "open_licence_scan",
     "read_licence_scan",
+    # chapter 13
+    "reserve_window",
 }
+
+# The only tool in this server that changes anything. Chapter 4 predicted this
+# list would appear and said adding to it should be a decision rather than a
+# reflex — a tool that writes needs different annotations, different retry
+# behaviour and, from chapter 17, different permissions.
+WRITING_TOOLS = {"reserve_window"}
 
 
 # region: surface
@@ -108,13 +116,32 @@ async def test_the_schema_rejects_an_unknown_status(client):
             )
 
 
-async def test_read_only_tools_say_so(client):
-    """Annotations are how a client decides what it may run without asking."""
+async def test_every_tool_declares_what_it_does(client):
+    """Annotations are how a client decides what it may run without asking.
+
+    A missing annotation is treated conservatively, which in practice means a
+    confirmation dialog in front of the user on every single call."""
     async with client:
         for tool in await client.list_tools():
             assert tool.annotations is not None, f"{tool.name} has no annotations"
-            assert tool.annotations.read_only_hint is True, (
-                f"{tool.name} claims to write"
+            writes = tool.name in WRITING_TOOLS
+            assert tool.annotations.read_only_hint is not writes, (
+                f"{tool.name} is annotated read-only={tool.annotations.read_only_hint} "
+                f"but {'writes' if writes else 'only reads'}"
+            )
+
+
+async def test_the_writing_tool_takes_an_idempotency_key(client):
+    """A tool that changes something will be retried after a dropped stream,
+    because the specification tells the client to reissue it. Claiming
+    idempotentHint without a key to enforce it is a lie with consequences."""
+    async with client:
+        for tool in await client.list_tools():
+            if tool.name not in WRITING_TOOLS:
+                continue
+            required = tool.input_schema.get("required", [])
+            assert "idempotency_key" in required, (
+                f"{tool.name} writes but does not require an idempotency key"
             )
 
 

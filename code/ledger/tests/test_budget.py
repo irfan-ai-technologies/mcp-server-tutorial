@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import json
 
-# Raised from 4,000 in the chapter 12 commit: the scan pair added 1,499
-# characters and took the surface to 4,472. Worth arguing about — two tools for
-# one capability is the most expensive shape there is, and chapter 12 says why
-# it is still the right call here. The next increase should be harder than this
-# one, which is the whole reason the number is written down.
-TOOLS_LIST_BUDGET = 5_000
+# 4,000 → 5,000 in chapter 12 (the scan pair), → 6,000 here for reserve_window.
+# Three increases in three chapters is the pattern this test exists to make
+# visible, and it is the argument Part 4 opens with: a surface cannot be kept
+# small by resolve alone. From chapter 19 this number comes down instead of up,
+# and if it does not, the book is wrong.
+TOOLS_LIST_BUDGET = 6_000
 # Raised from 1,200 in the chapter 10 commit. find_licences went to 1,226
 # characters when it gained a limit parameter, a paged return shape and a
 # description that warns about breadth — and that trade bought an eight-fold
