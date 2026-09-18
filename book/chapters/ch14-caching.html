@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- BEGIN:title --><title>14. Caching and the prompt cache &mdash; MCP Servers: Zero to Hero</title><!-- END:title -->
+<link rel="stylesheet" href="../assets/book.css">
+<script src="../assets/book.js" defer></script>
+</head>
+<body>
+<button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle colour theme">◐</button>
+<div class="shell">
+<nav class="sidebar" aria-label="Contents">
+<!-- BEGIN:sidebar -->
+<a class="brand" href="../index.html">MCP Servers: Zero to Hero</a>
+<p class="part">Part 0 — Orientation</p>
+<ol>
+<li><a href="ch01-what-mcp-actually-is.html"><span class="num">1</span>What MCP actually is</a></li>
+<li><a href="ch02-the-protocol-in-one-chapter.html"><span class="num">2</span>The protocol in one chapter</a></li>
+</ol>
+<p class="part">Part 1 — Zero: a server that works</p>
+<ol>
+<li><a href="ch03-first-server.html"><span class="num">3</span>First server</a></li>
+<li><a href="ch04-tools.html"><span class="num">4</span>Tools</a></li>
+<li><a href="ch05-resources.html"><span class="num">5</span>Resources and templates</a></li>
+<li><a href="ch06-prompts.html"><span class="num">6</span>Prompts</a></li>
+<li><a href="ch07-testing-without-an-llm.html"><span class="num">7</span>Testing without an LLM</a></li>
+</ol>
+<p class="part">Part 2 — The client&#x27;s point of view</p>
+<ol>
+<li><a href="ch08-what-the-model-sees.html"><span class="num">8</span>What the model actually sees</a></li>
+<li><a href="ch09-tool-design-is-prompt-engineering.html"><span class="num">9</span>Tool design is prompt engineering</a></li>
+<li><a href="ch10-result-shaping.html"><span class="num">10</span>Result shaping</a></li>
+</ol>
+<p class="part">Part 3 — Scale</p>
+<ol>
+<li><a href="ch11-going-http.html"><span class="num">11</span>Going HTTP</a></li>
+<li><a href="ch12-life-after-sessions.html"><span class="num">12</span>Life after sessions</a></li>
+<li><a href="ch13-failure.html"><span class="num">13</span>Failure</a></li>
+<li><a href="ch14-caching.html" aria-current="page"><span class="num">14</span>Caching and the prompt cache</a></li>
+<li><a aria-disabled="true"><span class="num">15</span>Long-running work</a></li>
+<li><a aria-disabled="true"><span class="num">16</span>Observability</a></li>
+<li><a aria-disabled="true"><span class="num">17</span>Identity and multi-tenancy</a></li>
+<li><a aria-disabled="true"><span class="num">18</span>Security</a></li>
+</ol>
+<p class="part">Part 4 — The context problem</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">19</span>Progressive disclosure I: shrink the surface</a></li>
+<li><a aria-disabled="true"><span class="num">20</span>Progressive disclosure II: search then load</a></li>
+<li><a aria-disabled="true"><span class="num">21</span>Progressive disclosure III: resources as the channel</a></li>
+<li><a aria-disabled="true"><span class="num">22</span>jq as a tool</a></li>
+<li><a aria-disabled="true"><span class="num">23</span>Code mode</a></li>
+</ol>
+<p class="part">Part 5 — Shipping</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">24</span>Packaging and distribution</a></li>
+<li><a aria-disabled="true"><span class="num">25</span>Evaluating a server</a></li>
+<li><a aria-disabled="true"><span class="num">26</span>Anti-patterns and a review checklist</a></li>
+</ol>
+<p class="part">Appendices</p>
+<ol>
+<li><a aria-disabled="true"><span class="num">A</span>The same server without FastMCP</a></li>
+<li><a aria-disabled="true"><span class="num">B</span>Migrating 2025-11-25 to 2026-07-28</a></li>
+<li><a aria-disabled="true"><span class="num">C</span>jq cookbook for agent tool results</a></li>
+<li><a aria-disabled="true"><span class="num">D</span>Glossary</a></li>
+</ol>
+<!-- END:sidebar -->
+</nav>
+<main class="content">
+<header class="chapter-head">
+<!-- BEGIN:head -->
+<p class="eyebrow">Part 3 — Scale &middot; Chapter 14</p>
+<h1>Caching and the prompt cache</h1>
+<p class="standfirst">ttlMs, cacheScope, deterministic list ordering, and why reordering your tools costs your users money.</p>
+<div class="chapter-meta"><span><b>Status</b> <span class="status status-draft">draft</span></span><span><b>Protocol</b> <code>2026-07-28</code></span><span><b>Code</b> <code>git checkout ch14-caching</code></span></div>
+<!-- END:head -->
+</header>
+<!-- BEGIN:body -->
+<p>Chapter 8 measured what your tool surface costs once. This chapter is about what it costs
+every turn, and the answer depends on something most servers treat as an implementation
+detail: the order your tools come back in.</p>
+
+<h2 id="two-caches-and-only-one-of-them-is-yours">Two caches, and only one of them is yours<a class="anchor" href="#two-caches-and-only-one-of-them-is-yours" aria-label="Link to this section">#</a></h2>
+
+<p>The revision added explicit caching to the protocol.</p>
+
+<div class="callout spec">
+<span class="label">Specification 2026-07-28</span>
+<p>Results from <code>tools/list</code>, <code>prompts/list</code>,
+<code>resources/list</code>, <code>resources/read</code> and
+<code>resources/templates/list</code> carry required <code>ttlMs</code> and
+<code>cacheScope</code> fields via a new <code>CacheableResult</code> interface.
+<code>ttlMs</code> is a freshness hint in milliseconds; <code>cacheScope</code>
+(<code>"public"</code> or <code>"private"</code>) controls whether shared intermediaries may
+cache the response. Both complement the existing <code>listChanged</code> notifications.</p>
+</div>
+
+<p>That is the protocol cache: it saves round trips. Useful, and not the expensive one.</p>
+
+<p>The expensive one is the model's prompt cache, and you never address it directly. Your
+tool definitions sit near the front of the context window, ahead of the conversation. A
+provider caches that prefix and charges a fraction to re-read it. The cache is a
+<em>prefix</em> match: everything up to the first difference is a hit, and everything from
+there on is paid for in full.</p>
+
+<p>Which means a single reordered tool invalidates the cache from that point onward — even
+though not one byte of your tool surface actually changed.</p>
+
+<h2 id="the-load-bearing-file-nobody-reviews">The load-bearing file nobody reviews<a class="anchor" href="#the-load-bearing-file-nobody-reviews" aria-label="Link to this section">#</a></h2>
+
+<p>FastMCP returns tools in registration order. <code>ledger</code> registers by importing
+modules for their side effects, so the order comes from the order of the import lines in
+<code>server.py</code>.</p>
+
+<p>Before this chapter, that order was: the scan tools, then the catalogue tools, then the
+write tool — because <code>scans</code> is imported before <code>tools</code>, because the
+lines happen to be alphabetical by module name. Move an import, or let a linter sort them
+differently, and every user's prompt cache misses on their next turn. No reviewer flags it.
+Nothing in the diff says "performance".</p>
+
+<!-- include: code/ledger/src/ledger/caching.py lang=python region=ordering -->
+<figure class="snippet">
+<figcaption><span class="path">code/ledger/src/ledger/caching.py</span><span>region ordering</span></figcaption>
+<pre class="highlight"><code><span class="k">class</span><span class="w"> </span><span class="nc">DeterministicOrder</span><span class="p">(</span><span class="n">Middleware</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Sort every list endpoint by name, on every instance, forever.</span>
+
+<span class="sd">    Cheap to add, invisible when it works, and the alternative is an ordering</span>
+<span class="sd">    that changes when someone moves an import line — a diff no reviewer would</span>
+<span class="sd">    ever flag as a performance regression.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">on_list_tools</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">call_next</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="k">await</span> <span class="n">call_next</span><span class="p">(</span><span class="n">context</span><span class="p">),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="n">t</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">on_list_resources</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">call_next</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="k">await</span> <span class="n">call_next</span><span class="p">(</span><span class="n">context</span><span class="p">),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">r</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">uri</span><span class="p">))</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">on_list_resource_templates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">call_next</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="k">await</span> <span class="n">call_next</span><span class="p">(</span><span class="n">context</span><span class="p">),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">uri_template</span><span class="p">))</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">on_list_prompts</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">call_next</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="k">await</span> <span class="n">call_next</span><span class="p">(</span><span class="n">context</span><span class="p">),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="o">.</span><span class="n">name</span><span class="p">)</span></code></pre>
+</figure>
+<!-- endinclude -->
+
+<p>Four methods, and the deploy that reorders an import stops mattering. The test is the
+useful part:</p>
+
+<pre class="highlight"><code>assert names == sorted(names), (
+    "tools/list must be deterministic — registration order depends on the "
+    "import order in ledger.server, which nobody reviews as load-bearing"
+)</code></pre>
+
+<p>And the one that matters more, because it catches the failure a single-instance test
+cannot see: two instances must produce the same order, or half your requests invalidate the
+cache the other half just warmed.</p>
+
+<h2 id="what-else-moves-in-your-prefix">What else moves in your prefix<a class="anchor" href="#what-else-moves-in-your-prefix" aria-label="Link to this section">#</a></h2>
+
+<p>Ordering is the one people miss. Three others are worth a moment.</p>
+
+<p><strong>Anything with a timestamp in it.</strong> A tool description mentioning "as of
+today", a resource whose content includes a generation time, an instructions block with a
+version string that changes on every build. Each of those is a guaranteed miss, once per
+deploy or once per day, for every user.</p>
+
+<p><strong>Per-request tailoring.</strong> Chapter 19 will filter the tool surface by caller
+identity, which is the right thing to do and which fragments the cache by definition. That
+trade is worth making — a smaller surface beats a cached large one — but make it knowingly
+rather than discovering it.</p>
+
+<p><strong>Large results, inserted mid-conversation.</strong> Chapter 8 flagged this and it
+belongs here properly. A 15,118-token result does not just cost 15,118 tokens once. It lands
+in the middle of the conversation, and everything after it is new prefix. The paging in
+chapter 10 bought more than it appeared to.</p>
+
+<h2 id="ttlms-cachescope-and-what-your-library-will-not-send">ttlMs, cacheScope, and what your library will not send<a class="anchor" href="#ttlms-cachescope-and-what-your-library-will-not-send" aria-label="Link to this section">#</a></h2>
+
+<p><code>ledger</code> cannot emit the protocol cache fields. FastMCP 4.0.3 does not put them
+on list results, and chapter 2 showed the captured responses proving it.</p>
+
+<p>This is worth sitting with rather than skipping, because it is the ordinary condition of
+building on a moving protocol: a required field that your library does not yet produce.
+Three options, in the order most people should consider them.</p>
+
+<p><strong>Do nothing, knowingly.</strong> Clients written against the revision must tolerate
+their absence — the same backward-compatibility rules that cover a missing
+<code>resultType</code>. You lose the caching hint, not correctness. Write it down in a drift
+log, with the date.</p>
+
+<p><strong>Patch it in your app.</strong> Possible, and it means owning a shim through every
+library upgrade to add a field nobody currently reads.</p>
+
+<p><strong>Fix it upstream.</strong> The honest answer for a gap this small and this
+mechanical.</p>
+
+<p>What you should not do is claim conformance you do not have. A client that requires
+<code>ttlMs</code> will not be satisfied by a server that does not send it, and chapter 24 is
+where "which protocol version do you actually speak" has to be answered out loud.</p>
+
+<h2 id="invalidation-now-that-subscriptions-changed">Invalidation, now that subscriptions changed<a class="anchor" href="#invalidation-now-that-subscriptions-changed" aria-label="Link to this section">#</a></h2>
+
+<div class="callout spec">
+<span class="label">Specification 2026-07-28</span>
+<p><code>resources/subscribe</code> and the HTTP GET endpoint are replaced by
+<code>subscriptions/listen</code>: one long-lived POST-response stream that a client opts
+into by notification type — <code>toolsListChanged</code>, <code>promptsListChanged</code>,
+<code>resourcesListChanged</code>, <code>resourceSubscriptions</code> — with each
+notification tagged by <code>io.modelcontextprotocol/subscriptionId</code>.</p>
+</div>
+
+<p>The design point underneath: <code>ttlMs</code> handles the common case of "this is
+probably still fine", and notifications handle "this definitely changed". Together they
+should make polling rare, which is the outcome the revision was after.</p>
+
+<p><code>ledger</code>'s catalogue does not change during a conversation, so it needs
+neither. Most servers are like this and announce changes they do not have. If your tool list
+is fixed at startup, say so with a long TTL when you can send one, and do not open a stream
+to tell nobody about nothing.</p>
+
+<h2 id="caching-inside-your-server">Caching inside your server<a class="anchor" href="#caching-inside-your-server" aria-label="Link to this section">#</a></h2>
+
+<p>Everything above is about the client's cache. Your own is a smaller matter and mostly
+ordinary engineering, with one MCP-specific wrinkle.</p>
+
+<p>Cache keys must include the caller's identity the moment your server is multi-tenant.
+Chapter 17 makes <code>ledger</code> multi-tenant, and a cache keyed on
+<code>title_id</code> alone at that point serves one studio's data to another. It is the
+most boring possible way to cause a serious incident, and it is common enough that
+<code>cacheScope: "private"</code> exists in the protocol to stop intermediaries doing the
+same thing.</p>
+
+<h2 id="checkpoint">Checkpoint<a class="anchor" href="#checkpoint" aria-label="Link to this section">#</a></h2>
+
+<p>The cache you cannot see is the one that costs money. Sort your lists, keep timestamps out
+of your prefix, page your results, and when you fragment the cache deliberately — for
+per-caller surfaces, in Part 4 — know that is what you are doing.</p>
+
+<p>Chapter 15 takes the work that does not fit in a request at all.</p>
+<!-- END:body -->
+<!-- BEGIN:pager -->
+<nav class="pager" aria-label="Chapter">
+<a class="prev" href="ch13-failure.html"><span class="dir">Previous</span><span class="name">13. Failure</span></a>
+<span class="spacer"></span>
+</nav>
+<!-- END:pager -->
+</main>
+</div>
+</body>
+</html>

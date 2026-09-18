@@ -37,7 +37,7 @@
 <li><a href="ch11-going-http.html"><span class="num">11</span>Going HTTP</a></li>
 <li><a href="ch12-life-after-sessions.html"><span class="num">12</span>Life after sessions</a></li>
 <li><a href="ch13-failure.html"><span class="num">13</span>Failure</a></li>
-<li><a aria-disabled="true"><span class="num">14</span>Caching and the prompt cache</a></li>
+<li><a href="ch14-caching.html"><span class="num">14</span>Caching and the prompt cache</a></li>
 <li><a aria-disabled="true"><span class="num">15</span>Long-running work</a></li>
 <li><a aria-disabled="true"><span class="num">16</span>Observability</a></li>
 <li><a aria-disabled="true"><span class="num">17</span>Identity and multi-tenancy</a></li>
@@ -195,6 +195,8 @@ as the ones printed in this book.</p>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">fastmcp</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastMCP</span>
 
+<span class="kn">from</span><span class="w"> </span><span class="nn">ledger.caching</span><span class="w"> </span><span class="kn">import</span> <span class="n">DeterministicOrder</span>
+
 <span class="n">mcp</span> <span class="o">=</span> <span class="n">FastMCP</span><span class="p">(</span>
     <span class="n">name</span><span class="o">=</span><span class="s2">&quot;ledger&quot;</span><span class="p">,</span>
     <span class="n">instructions</span><span class="o">=</span><span class="p">(</span>
@@ -208,7 +210,11 @@ as the ones printed in this book.</p>
         <span class="s2">&quot;returns. Territories are ISO 3166-1 alpha-2 codes. Money is in minor &quot;</span>
         <span class="s2">&quot;units.&quot;</span>
     <span class="p">),</span>
-<span class="p">)</span></code></pre>
+<span class="p">)</span>
+
+<span class="c1"># Chapter 14: the same order on every instance and every call, so a client&#39;s</span>
+<span class="c1"># prompt cache survives a deploy that happened to reorder an import.</span>
+<span class="n">mcp</span><span class="o">.</span><span class="n">add_middleware</span><span class="p">(</span><span class="n">DeterministicOrder</span><span class="p">())</span></code></pre>
 </figure>
 <!-- endinclude -->
 

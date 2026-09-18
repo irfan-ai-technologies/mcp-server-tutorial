@@ -134,7 +134,7 @@
           "slug": "ch14-caching",
           "title": "Caching and the prompt cache",
           "standfirst": "ttlMs, cacheScope, deterministic list ordering, and why reordering your tools costs your users money.",
-          "status": "planned",
+          "status": "draft",
           "tag": "ch14-caching"
         },
         {
